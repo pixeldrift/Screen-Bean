@@ -16,6 +16,14 @@ struct DisplayInfo {
     
     var physicalWidthInches: Double
     var physicalHeightInches: Double
+
+    /// The dimensions reported by macOS when the display was detected.
+    var detectedWidthInches: Double
+    var detectedHeightInches: Double
+
+    /// True when the physical dimensions have been manually calibrated.
+    var isCalibrated: Bool    
+    
     var scaleFactor: CGFloat
     var positionX: Double
     var positionY: Double
@@ -56,6 +64,9 @@ struct DisplayInfo {
                 pixelHeight: heightPx,
                 physicalWidthInches: widthIn,
                 physicalHeightInches: heightIn,
+                detectedWidthInches: widthIn,
+                detectedHeightInches: heightIn,
+                isCalibrated: false,
                 scaleFactor: scaleFactor,
                 positionX: Double(origin.x),
                 positionY: Double(origin.y),
@@ -80,6 +91,20 @@ struct DisplayInfo {
             return screen.localizedName
         }
     }
+    
+    mutating func calibratePhysicalSize(
+        width: Double,
+        height: Double
+    ) {
+        guard width > 0, height > 0 else {
+            return
+        }
+
+        physicalWidthInches = width
+        physicalHeightInches = height
+        isCalibrated = true
+    }
+    
 
     return "Display \(displayID)"
 }
