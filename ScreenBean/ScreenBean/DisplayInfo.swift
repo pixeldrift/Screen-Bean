@@ -51,7 +51,7 @@ struct DisplayInfo {
             
             let info = DisplayInfo(
                 displayID: id,
-                nickname: "Display \(id)",
+                nickname: displayName(for: id),
                 pixelWidth: widthPx,
                 pixelHeight: heightPx,
                 physicalWidthInches: widthIn,
@@ -67,6 +67,22 @@ struct DisplayInfo {
         
         return infos
     }
+    
+    static func displayName(for displayID: CGDirectDisplayID) -> String {
+    for screen in NSScreen.screens {
+        guard let screenNumber = screen.deviceDescription[
+            NSDeviceDescriptionKey("NSScreenNumber")
+        ] as? NSNumber else {
+            continue
+        }
+
+        if screenNumber.uint32Value == displayID {
+            return screen.localizedName
+        }
+    }
+
+    return "Display \(displayID)"
+}
     
     struct DisplayLayoutHelper {
         static func normalizedDisplays(from displays: [DisplayInfo], fitting size: CGSize, padding: CGFloat = 40) -> [(info: DisplayInfo, frame: CGRect)] {
