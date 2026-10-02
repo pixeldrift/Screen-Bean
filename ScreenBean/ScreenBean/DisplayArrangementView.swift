@@ -1,93 +1,157 @@
+//
+//  DisplayArrangementView.swift
+//  ScreenBean
+//
+
 import Cocoa
 
-var displays: [DisplayInfo] = []
-
 class DisplayArrangementView: NSView {
+
     var displays: [DisplayInfo] = [] {
         didSet {
-            updateDisplayViews()
-            setNeedsDisplay(bounds)  // trigger redraw when displays change
+            rebuildPhysicalLayout()
+            setNeedsDisplay(bounds)
         }
     }
 
-    private let scaleFactor: CGFloat = 0.1 // consistent scale factor
+    private var physicalLayout = PhysicalLayout()
+
+    /// Points/pixels used to represent one physical inch in the
+    /// Screen Bean workspace.
+    private let pointsPerInch: CGFloat = 20.0
+
+    // MARK: - Layout
+
+    private func rebuildPhysicalLayout() {
+
+        guard !displays.isEmpty else {
+            physicalLayout = PhysicalLayout()
+            return
+        }
+
+        var physicalDisplays: [PhysicalLayout.Display] = []
+
+        // Use the first display as our physical origin.
+        let referenceDisplay = displays[0]
+
+        let referencePixelWidth = max(
+            CGFloat(referenceDisplay.pixelWidth),
+            1
+        )
+
+        let referencePhysicalWidth = max(
+            CGFloat(referenceDisplay.physicalWidthInches),
+            0.1
+        )
+
+        // How many physical inches does one Mac coordinate unit represent?
+        let inchesPerMacUnit =
+            referencePhysicalWidth / referencePixelWidth
+
+        let referenceX = CGFloat(referenceDisplay.positionX)
+        let referenceY = CGFloat(referenceDisplay.positionY)
+
+        for display in displays {
+
+            let pixelX = CGFloat(display.positionX)
+            let pixelY = CGFloat(display.positionY)
+
+            let physicalX =
+                (pixelX - referenceX) * inchesPerMacUnit
+
+            let physicalY =
+                (pixelY - referenceY) * inchesPerMacUnit
+
+            let physicalDisplay = PhysicalLayout.Display(
+                id: display.displayID,
+                nickname: display.nickname,
+                x: physicalX,
+                y: physicalY,
+                width: CGFloat(display.physicalWidthInches),
+                height: CGFloat(display.physicalHeightInches)
+            )
+
+            physicalDisplays.append(physicalDisplay)
+        }
+
+        physicalLayout = PhysicalLayout(
+            displays: physicalDisplays
+        )
+    }
+
+    // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
+
         super.draw(dirtyRect)
-        
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
+
+        guard let context = NSGraphicsContext.current?.cgContext else {
+            return
+        }
+
         context.clear(bounds)
 
-        guard !displays.isEmpty else { return }
-
-        // Compute bounding rect for all displays in scaled coordinates
-        let displayRects = displays.map { display -> CGRect in
-            let origin = CGPoint(x: CGFloat(display.positionX) * scaleFactor,
-                                 y: CGFloat(display.positionY) * scaleFactor)
-            let size = CGSize(width: display.physicalWidthInches * scaleFactor,
-                              height: display.physicalHeightInches * scaleFactor)
-            return CGRect(origin: origin, size: size)
+        guard !physicalLayout.displays.isEmpty else {
+            return
         }
 
-        let unionRect = displayRects.reduce(CGRect.null) { $0.union($1) }
-        let totalCanvasHeight = unionRect.height
+        let scale = pointsPerInch
 
-        for display in displays {
-            // Calculate scaled origin
-            let origin = CGPoint(x: CGFloat(display.positionX) * scaleFactor,
-                                 y: CGFloat(display.positionY) * scaleFactor)
-            let size = CGSize(width: display.physicalWidthInches * scaleFactor,
-                              height: display.physicalHeightInches * scaleFactor)
+        /*
+         Center the entire physical arrangement in the window.
+        */
 
-            // Flip Y coordinate so origin (0,0) is bottom-left instead of top-left
-            let flippedY = totalCanvasHeight - origin.y - size.height
-            let rect = CGRect(x: origin.x, y: flippedY, width: size.width, height: size.height)
+        let layoutWidth = physicalLayout.width * scale
+        let layoutHeight = physicalLayout.height * scale
 
-            // Draw the display rectangle
-            context.setFillColor(NSColor.systemTeal.cgColor)
-            context.fill(rect)
+        let offsetX = (bounds.width - layoutWidth) / 2
+        let offsetY = (bounds.height - layoutHeight) / 2
 
-            // Draw display info like nickname, etc.
-            drawDisplay(display, in: context, rect: rect)
-        }
-    }
+        for display in physicalLayout.displays {
 
-    private func updateDisplayViews() {
-        
-        // Remove existing DisplayView subviews before adding new ones
-        subviews.forEach { $0.removeFromSuperview() }
+            let rect = physicalLayout.rectInView(
+                for: display,
+                scale: scale
+            )
 
-        guard !displays.isEmpty else { return }
+            let finalRect = rect.offsetBy(
+                dx: offsetX,
+                dy: offsetY
+            )
 
-        // Compute bounding rect for all displays (same as in draw)
-        let displayRects = displays.map { display -> CGRect in
-            let origin = CGPoint(x: CGFloat(display.positionX) * scaleFactor,
-                                 y: CGFloat(display.positionY) * scaleFactor)
-            let size = CGSize(width: display.physicalWidthInches * scaleFactor,
-                              height: display.physicalHeightInches * scaleFactor)
-            return CGRect(origin: origin, size: size)
-        }
-        let unionRect = displayRects.reduce(CGRect.null) { $0.union($1) }
-        let totalCanvasHeight = unionRect.height
+            // Display body
+            context.setFillColor(
+                NSColor.systemTeal.cgColor
+            )
 
-        // Create and add a DisplayView for each display
-        for display in displays {
-            let origin = CGPoint(x: CGFloat(display.positionX) * scaleFactor,
-                                 y: CGFloat(display.positionY) * scaleFactor)
-            let size = CGSize(width: display.physicalWidthInches * scaleFactor,
-                              height: display.physicalHeightInches * scaleFactor)
+            context.fill(finalRect)
 
-            let flippedY = totalCanvasHeight - origin.y - size.height
+            // Display outline
+            context.setStrokeColor(
+                NSColor.labelColor.cgColor
+            )
 
-            let displayView = DisplayView(info: display)
-            displayView.frame = CGRect(origin: CGPoint(x: origin.x, y: flippedY),
-                                       size: size)
-            addSubview(displayView)
+            context.setLineWidth(2)
+
+            context.stroke(finalRect)
+
+            // Display label
+            drawDisplay(
+                display,
+                in: context,
+                rect: finalRect
+            )
         }
     }
 
-    func drawDisplay(_ display: DisplayInfo, in context: CGContext, rect: CGRect) {
-        // Draw the display's label centered within the rect
+    // MARK: - Labels
+
+    private func drawDisplay(
+        _ display: PhysicalLayout.Display,
+        in context: CGContext,
+        rect: CGRect
+    ) {
+
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
 
@@ -97,8 +161,16 @@ class DisplayArrangementView: NSView {
             .foregroundColor: NSColor.black
         ]
 
-        let text = display.nickname
-        let textRect = CGRect(x: rect.origin.x, y: rect.midY - 8, width: rect.width, height: 16)
-        text.draw(in: textRect, withAttributes: attrs)
+        let textRect = CGRect(
+            x: rect.minX,
+            y: rect.midY - 8,
+            width: rect.width,
+            height: 16
+        )
+
+        display.nickname.draw(
+            in: textRect,
+            withAttributes: attrs
+        )
     }
 }
