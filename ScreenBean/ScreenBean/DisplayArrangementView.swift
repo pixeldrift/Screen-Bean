@@ -293,78 +293,59 @@ class DisplayArrangementView: NSView {
     }
     // MARK: - Scale to Fit
     func scaleToFit() {
-        guard !physicalLayout.displays.isEmpty,
-              bounds.width > 0,
-              bounds.height > 0
-        else {
-            return
-        }
-        let padding: CGFloat = 80
-        let availableWidth =
-            max(
-                bounds.width - padding,
-                1
-            )
-        let availableHeight =
-            max(
-                bounds.height - padding,
-                1
-            )
-        let widthScale =
-            availableWidth /
-            max(
-                physicalLayout.width *
-                    basePointsPerInch,
-                1
-            )
-        let heightScale =
-            availableHeight /
-            max(
-                physicalLayout.height *
-                    basePointsPerInch,
-                1
-            )
-        zoom = min(
-            widthScale,
-            heightScale
-        )
-        zoom = max(
-            zoom,
-            0.05
-        )
-        centerView()
-        needsDisplay = true
+
+    guard physicalLayout.width > 0,
+
+          physicalLayout.height > 0 else {
+
+        return
+
     }
+
+    let availableWidth = bounds.width - 80
+
+    let availableHeight = bounds.height - 80
+
+    let scaleX = availableWidth /
+
+        (physicalLayout.width * basePointsPerInch)
+
+    let scaleY = availableHeight /
+
+        (physicalLayout.height * basePointsPerInch)
+
+    zoom = min(scaleX, scaleY)
+
+    centerView()
+
+}
+
     // MARK: - Center View
     func centerView() {
-        guard !physicalLayout.displays.isEmpty else {
-            viewOffset = CGPoint(
-                x: bounds.midX,
-                y: bounds.midY
-            )
-            needsDisplay = true
-            return
-        }
-        let layoutWidth =
-            physicalLayout.width *
-            pointsPerInch
-        let layoutHeight =
-            physicalLayout.height *
-            pointsPerInch
-        viewOffset = CGPoint(
-            x:
-                (bounds.width -
-                 layoutWidth) / 2 -
-                physicalLayout.minX *
-                pointsPerInch,
-            y:
-                (bounds.height -
-                 layoutHeight) / 2 -
-                physicalLayout.minY *
-                pointsPerInch
-        )
-        needsDisplay = true
+
+    guard physicalLayout.width > 0,
+
+          physicalLayout.height > 0 else {
+
+        return
+
     }
+
+    let layoutWidth = physicalLayout.width * basePointsPerInch * zoom
+
+    let layoutHeight = physicalLayout.height * basePointsPerInch * zoom
+
+    viewOffset = CGPoint(
+
+        x: (bounds.width - layoutWidth) / 2,
+
+        y: (bounds.height - layoutHeight) / 2
+
+    )
+
+    needsDisplay = true
+
+}
     // MARK: - Mouse Pan
     override func mouseDown(
         with event: NSEvent
