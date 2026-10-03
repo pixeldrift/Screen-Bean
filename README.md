@@ -1,26 +1,10 @@
-When you have multiple monitors with different sizes and resolutions, it can be difficult to get them all aligned in relation to eachother with mouse coordinates mapped across them. This is especially tricky if you want to have a single graphic spread across all screens like one giant wallpaper image.
-
-The goal of this project is to create an alternative to the system Display settings panel similar to the existing controls, but with extended capabilities designed to help treat your displays as though they exist as windows onto a singular canvas.
-
-We want to easily indicate where the screens are in physical space, what their actual physical dimensions are vs the resolution (pixel density), and provide visual tools for aligning them snd rectifying those resolutions to standardized units.
-
-For example, imagine creating a virtual space where we project imaginary lines out of one monitor indicating its top, bottom, and sides. Then on your other displays, you would be able to grab those lines and drag to position them like guides until they correctly line up with with the boundaries of the other screens. 
-
-Another useful tool would be to take a straight-on photo of your desk's display setup, mark (or autodetect) the corners of your displays, and have all the display settings rectified to where they are in relation and scale to each other.
-
-These display configuration tools can also be used with projectors. The same 4k resolution that is measured in pixels per inch for monitor is often messured in picels per foot on a large projection. This could be used for a "foveated" display, where a lower density projected image is paired as a contextual extension of the main monitor, like peripheral vision. This setup is cslled focus-plus.
-
-https://www.patrickbaudisch.com/projects/focuspluscontextscreens/applications/index.html
-
-Similar approaches are used in video playback snd routing ststems for live events where multiple projectors and LED walls are combined with arbitary positions, shape, and sizes.
-
- Screen Bean
+#Screen Bean
 
 Your display settings, caffeinated.
 
 Screen Bean is a macOS tool for planning, visualizing, calibrating, and eventually controlling complex multi-display environments.
 
-When multiple monitors have different sizes, resolutions, pixel densities, orientations, and physical positions, arranging them correctly can be surprisingly difficult. macOS provides a useful abstract representation of displays, but it doesn’t provide much help when the goal is to understand the physical relationship between the screens.
+When multiple monitors have different sizes, resolutions, pixel densities, orientations, and physical positions, arranging them correctly can be difficult. MacOS provides a useful abstract representation of displays, but it doesn’t provide much help when the goal is to understand the physical relationship between the screens.
 
 Screen Bean aims to bridge that gap.
 
@@ -28,27 +12,27 @@ Instead of treating displays as arbitrary pixel rectangles, Screen Bean creates 
 
 ⸻
 
-Current Status
+##Current Status
 
 Screen Bean is an early-stage prototype.
 
 The current application can:
 
-* Automatically detect connected displays.
-* Identify displays using Apple’s display APIs.
-* Retrieve display names.
-* Retrieve display resolutions.
-* Retrieve physical display dimensions reported by macOS.
-* Calculate approximate pixel density / PPI.
-* Track the Mac’s current display arrangement.
-* Represent displays in a physical coordinate system.
-* Preserve manually calibrated physical dimensions.
-* Assign persistent display identities.
-* Save display configurations between launches.
-* Display physical dimensions in the workspace.
-* Automatically scale the physical layout to fit the available workspace.
+* Automatically detect connected displays
+* Identify displays using Apple’s display APIs
+* Retrieve display names
+* Retrieve display resolutions
+* Retrieve physical display dimensions reported by macOS
+* Calculate approximate pixel density / PPI
+* Track the Mac’s current display arrangement
+* Represent displays in a physical coordinate system
+* Preserve manually calibrated physical dimensions
+* Assign persistent display identities
+* Save display configurations between launches
+* Display physical dimensions in the workspace
+* Automatically scale the physical layout to fit the available workspace
 
-The underlying architecture is being built around a physical coordinate system so that more advanced calibration and mapping tools can be added without having to redesign the core geometry system.
+The underlying architecture is built around a physical coordinate system so that more advanced calibration and mapping tools can be added without having to redesign the core geometry system.
 
 ⸻
 
@@ -56,34 +40,33 @@ The Problem
 
 A typical multi-monitor setup might contain:
 
-* A 27” 4K monitor.
-* A 24” 1080p monitor.
-* A laptop or iMac display.
-* A vertically rotated display.
-* Displays positioned at different heights.
-* Displays with different pixel densities.
-* Displays separated by physical gaps.
+* A 27” 4K monitor
+* A 24” 1080p monitor
+* A laptop or iMac display
+* A vertically rotated display
+* Displays positioned at different heights
+* Displays with different pixel densities
+* Displays separated by physical gaps
 
-macOS can represent these screens in its own coordinate system, but that representation doesn’t necessarily correspond to the physical arrangement of the monitors.
+MacOS can represent these screens in its own coordinate system, but that representation doesn’t necessarily correspond to the physical arrangement of the monitors.
 
-For applications involving:
+the physical relationship between displays can be more important than their raw pixel coordinates, especially for situations involving:
 
-* Large continuous wallpapers.
-* Digital signage.
-* Multi-monitor installations.
-* Physical display calibration.
-* Accurate mouse transitions.
-* Visual alignment.
-* Photography and video production.
-* Exhibition or installation planning.
+* Large continuous wallpapers
+* Digital signage
+* Multi-monitor installations
+* Physical display calibration
+* Accurate mouse transitions
+* Visual alignment
+* Photography and video production
+* Exhibition or installation planning
 
-the physical relationship between displays can be more important than their raw pixel coordinates.
 
 Screen Bean is intended to make that physical relationship visible and editable.
 
 ⸻
 
-Core Concept
+##Core Concept
 
 Screen Bean uses a physical coordinate system as its canonical representation of the display environment.
 
@@ -109,168 +92,148 @@ For example:
 
 The physical model is independent of:
 
-* macOS display coordinates.
-* Pixel resolution.
-* Window size.
-* Screen Bean’s zoom level.
+* MacOS display coordinates
+* Pixel resolution
+* Window size
+* Screen Bean’s zoom level
 
 Those systems become projections of the physical model.
 
 ⸻
 
-Display Detection
+##Display Detection
 
 Screen Bean automatically detects displays connected to the Mac.
 
 For each display, it collects information including:
 
-* Persistent display identity.
-* macOS display ID.
-* Display name.
-* Pixel width.
-* Pixel height.
-* Physical width.
-* Physical height.
-* Primary-display status.
-* macOS screen position.
-* Approximate pixel density.
+* Persistent display identity
+* macOS display ID
+* Display name
+* Pixel width
+* Pixel height
+* Physical width
+* Physical height
+* Primary-display status
+* macOS screen position
+* Approximate pixel density
 
-Where macOS provides physical dimensions, those values are retained as the detected dimensions.
-
-Users can subsequently calibrate the dimensions manually.
-
-The original detected dimensions remain available so Screen Bean can distinguish between:
-
-Detected
-
-and
-
-Calibrated
-
-values.
+Where MacOS provides physical dimensions, those values are retained as the detected dimensions while users can then calibrate the dimensions manually. The original detected dimensions remain available so Screen Bean can distinguish between detected and calibrated measurements.
 
 ⸻
 
-Persistent Display Identity
+##Persistent Display Identity
 
 Display identity is separated from the runtime Core Graphics display ID.
 
-Screen Bean uses Apple’s display UUID to identify the physical display across application launches.
+Screen Bean uses Apple’s display UUID to identify the physical display across application launches. This can accommodate display-specific information such as:
 
-This allows display-specific information such as:
+* Nickname
+* Physical dimensions
+* Calibration state
+* Physical position
+* Rotation
+* Future mapping information
 
-* Nickname.
-* Physical dimensions.
-* Calibration state.
-* Physical position.
-* Rotation.
-* Future mapping information.
-
-to remain associated with the correct physical display.
+Those details can then remain associated with the correct physical display.
 
 ⸻
 
-Physical Display Model
+##Physical Display Model
 
 Each display is represented using physical geometry.
 
 A display has:
 
-* X position.
-* Y position.
-* Width.
-* Height.
-* Rotation.
-* Persistent identity.
-* Nickname.
-* Calibration state.
+* X position
+* Y position
+* Width
+* Height
+* Rotation
+* Persistent identity
+* Nickname
+* Calibration state
 
-The physical workspace can therefore represent displays independently of how macOS currently arranges them.
+Based on those factors, the physical workspace can then represent displays independently of how macOS currently arranges them.
 
 ⸻
 
-Workspace
+##Workspace
 
 The primary workspace is intended to become an interactive physical layout editor.
 
 Planned workspace features include:
 
-* Pan.
-* Zoom.
-* Trackpad/mouse navigation.
-* Scale to Fit.
-* Center View.
-* Physical measurement grid.
-* Rulers.
-* Measurement indicators.
-* Display selection.
-* Display dragging.
-* Display rotation.
+* Pan
+* Zoom
+* Trackpad/mouse navigation
+* Scale to Fit
+* Center View
+* Physical measurement grid
+* Rulers
+* Measurement indicators
+* Display selection
+* Display dragging
+* Display rotation
 
-The grid will provide physical context while remaining visually subtle.
-
-A default grid spacing of approximately 6 inches is planned, with finer subdivisions available at higher zoom levels.
+The grid background provides physical context while remaining visually subtle. A default grid spacing of approximately 6 inches is provided, with finer subdivisions available at higher zoom levels.
 
 ⸻
 
-Display Visualization
+##Display Visualization
 
 Displays should be visually distinguishable while retaining accurate physical proportions.
 
 Planned visualization options include:
 
-* Display colors.
-* Transparency.
-* Bezel visibility.
-* Center marks.
-* Edge markers.
-* Display labels.
-* Resolution information.
-* Physical dimensions.
-* Calibration status.
+* Display colors
+* Transparency
+* Bezel visibility
+* Center marks
+* Edge markers
+* Display labels
+* Resolution information
+* Physical dimensions
+* Calibration status
 
 This will make it possible to work with many displays without losing track of which physical monitor corresponds to which virtual display.
 
 ⸻
 
-Layout Reference Images
+##Layout Reference Images
 
-Screen Bean will support importing photographs or other images as physical layout references.
-
-A reference image will appear behind the virtual displays.
+Screen Bean will support importing photographs or other images as physical layout references. Reference image will appear behind the virtual displays.
 
 Users will be able to:
 
-* Position the image.
-* Scale it.
-* Rotate it.
-* Adjust transparency.
-* Lock it.
-* Toggle visibility.
+* Position the image
+* Scale it
+* Rotate it
+* Adjust transparency
+* Lock it
+* Toggle visibility
 
 This will allow a user to photograph an existing display installation and align Screen Bean’s virtual displays with the actual monitors in the photograph.
 
-Perspective Correction
+#Perspective Correction
 
 Future versions may support four-point perspective correction and image warping.
 
 The goal is to compensate for photographs taken:
 
-* Off-axis.
-* From above or below.
-* At an angle.
-* With wide-angle lenses.
+* Off-axis
+* From above or below
+* At an angle
+* With wide-angle lenses
 * With noticeable perspective distortion.
 
 Eventually, users may be able to identify the four corners of a photographed display and have Screen Bean rectify the image into the physical workspace.
 
 ⸻
 
-Unified Wallpaper Canvas
+##Unified Wallpaper Canvas
 
-Screen Bean will eventually support importing a single image intended to span multiple displays.
-
-The display arrangement becomes a unified canvas.
+Screen Bean will eventually support importing a single image intended to span multiple displays. The display arrangement becomes a unified canvas.
 
 For example:
 
@@ -287,71 +250,72 @@ For example:
 
 Users will be able to:
 
-* Import an image.
-* Position it.
-* Scale it.
-* Crop it.
-* Preview it across the complete display arrangement.
-* Generate individual images for each display.
+* Import an image
+* Position it
+* Scale it
+* Crop it
+* Preview it across the complete display arrangement
+* Toggle clipping to hide or dim areas of the image outside the displays
+* Generate individual images for each display
 
-The slicing process should account for each display’s:
+The slicing process should account for each display's properties.
 
-* Resolution.
-* Pixel density.
-* Physical size.
-* Position.
-* Rotation.
-* Orientation.
-* Relative location within the unified physical canvas.
+* Resolution
+* Pixel density
+* Physical size
+* Position
+* Rotation
+* Orientation
+* Relative location within the unified physical canvas
 
 The goal is to produce output appropriate for displays with different physical sizes and resolutions while maintaining the intended physical composition.
 
 ⸻
 
-Layout Export
+##Layout Export
 
 Screen Bean will eventually export layouts as:
 
-* PNG.
-* SVG.
-* PDF.
-* Other useful documentation formats.
+* PNG
+* SVG
+* PDF
+* Other useful documentation formats
 
 Exports may include:
 
-* Display outlines.
-* Display names.
-* Physical dimensions.
-* Grid.
-* Measurement annotations.
-* Guides.
-* Reference images.
-* Bezel outlines.
-* Calibration markers.
+* Display outlines
+* Display names
+* Physical dimensions
+* Grid
+* Measurement annotations
+* Guides
+* Reference images
+* Bezel outlines
+* Calibration markers
 
 This will make Screen Bean useful not only as a configuration tool but also as a documentation and installation-planning tool.
 
 ⸻
 
-Mouse Calibration
+##Mouse Calibration
 
 One of the more advanced goals for Screen Bean is a Mouse Calibration / Alignment Mode.
 
-The physical arrangement of displays doesn’t always correspond cleanly to their rectangular macOS coordinate boundaries.
+The physical arrangement of displays doesn’t always correspond cleanly to their rectangular MacOS coordinate boundaries.
 
 Screen Bean should eventually allow users to visually define how the mouse transitions between displays.
 
-Transport Zones
+##Transport Zones
 
 A user could select an edge or section of an edge on one display and connect it to another display.
 
 For example:
 
-┌──────────────┐      ┌──────────────┐
+┌──────────────┐─────▶┌──────────────┐
 │              │      │              │
-│   Display A  │─────▶│   Display B  │
+│   Display A  │      │   Display B  │
 │              │      │              │
-└──────────────┘      └──────────────┘
+└──────────────┘─────▶└──────────────┘
 
 The connected region becomes a mouse transport zone.
 
@@ -359,7 +323,7 @@ When the mouse exits Display A through that region, Screen Bean can map the mous
 
 ⸻
 
-Point-Based Mapping
+##Point-Based Mapping
 
 Transport zones should not be limited to complete edges.
 
@@ -378,40 +342,38 @@ This could allow unusual display arrangements and transitions that aren’t poss
 
 ⸻
 
-Corner Mapping
+##Corner Mapping
 
 Corners should be usable as calibration points.
 
 Possible mappings include:
 
-* Corner → corner.
-* Corner → arbitrary point.
-* Edge → edge.
-* Edge segment → edge segment.
-* Bottom → top.
-* Right → left.
-* Custom regions.
+* Corner → corner
+* Corner → arbitrary point
+* Edge → edge
+* Edge segment → edge segment
+* Bottom → top
+* Right → left
+* Custom regions
 
 This could eventually support mouse transitions that follow the physical topology of unusual multi-display installations.
 
 ⸻
 
-Alignment Guides
+##Alignment Guides
 
 Screen Bean will eventually support guides generated from selected displays.
 
 Default guides may include:
 
-* Left edge.
-* Right edge.
-* Top edge.
-* Bottom edge.
-* Horizontal center.
-* Vertical center.
+* Left edge
+* Right edge
+* Top edge
+* Bottom edge
+* Horizontal center
+* Vertical center
 
-Users should also be able to create custom guides.
-
-Guides can be projected into the physical workspace and used to compare alignment between displays.
+Users should also be able to create custom guides. Guides can be projected into the virtual physical workspace and used to compare alignment between displays.
 
 For example:
 
@@ -425,101 +387,63 @@ Dragging or adjusting a guide should provide visual feedback on the correspondin
 
 ⸻
 
-Snapping
+##Snapping
 
-Alignment tools will eventually support snapping.
+Alignment tools will support snapping.
 
-Possible modifier-key behavior:
-
-* Option — temporarily disable snapping.
-* Shift — constrain movement.
-* Other modifiers may be assigned as the interaction model evolves.
+* Option — temporarily disable snapping
+* Shift — constrain movement
 
 Snapping targets could include:
 
-* Display edges.
-* Display centers.
-* Grid intersections.
-* Guide lines.
-* Corners.
-* Arbitrary calibration points.
+* Display edges
+* Display corners
+* Display centers
+* Grid intersections
+* Guide lines
 
 ⸻
 
-Calibration Patterns
+##Calibration Patterns
 
-Screen Bean will eventually be able to display calibration patterns on the physical displays.
+Screen Bean will be able to display calibration patterns on the physical displays.
 
-Possible patterns include:
-
-* Grids.
-* Crosshairs.
-* Center marks.
-* Edge markers.
-* Numbered points.
-* Measurement references.
-* Alignment targets.
-* Continuous guides spanning multiple displays.
+* Grids
+* Crosshairs
+* Center marks
+* Edge markers
+* Numbered points
+* Measurement references
+* Alignment targets
+* Continuous guides spanning multiple displays
 
 These patterns should make it possible to compare the virtual model against the physical installation.
 
 ⸻
 
-Consistent Physical Scale
+##Consistent Physical Scale
 
 Different displays can have dramatically different pixel densities.
 
-Screen Bean should therefore distinguish between:
+Screen Bean should therefore distinguish between pixel dimensions and physical dimensions.
 
-Pixel dimensions
-
-and
-
-physical dimensions.
-
-A future calibration mode should allow reference elements such as:
-
-* Icons.
-* Cursor representations.
-* Guides.
-* Calibration markers.
-* Measurement graphics.
-
-to be displayed at the same physical size across displays.
+A calibration mode could allow reference elements such as icons, system menus, cursors, etc to be displayed at the same physical size across displays.
 
 For example, a 1-inch reference marker should represent approximately one physical inch regardless of whether it is displayed on a 1080p monitor or a high-density Retina display.
 
-Initially this will focus on Screen Bean’s own calibration and visualization tools. Global control over how third-party macOS applications render their UI may not be possible without deeper system integration.
+Initially this will focus on Screen Bean’s own calibration and visualization tools. Global control over how third-party MacOS applications render their UI may not be possible without deeper system integration.
 
 ⸻
 
-Architecture
+##Architecture
 
-Screen Bean is being designed around a canonical physical coordinate system.
-
-The physical workspace is the source of truth.
-
-                  PHYSICAL WORKSPACE
-                       inches
-                          │
-            ┌─────────────┼─────────────┐
-            │             │             │
-            ▼             ▼             ▼
-       macOS Layout   Pixel Space   Screen Bean UI
-       Coordinates    Resolution       Zoom
-            │             │             │
-            └─────────────┼─────────────┘
-                          │
-                          ▼
-                 Calibration & Mapping
-
-This separation is intentional.
+Screen Bean is being designed around a canonical physical coordinate system. The physical workspace is the source of truth. This separation is intentional.
 
 It allows the application to evolve from a simple visualization tool into a more sophisticated calibration and mapping system without making the UI coordinate system the foundation of the application.
 
 ⸻
 
-Current Architecture
+##Current Architecture
 
 The project currently includes several foundational components.
 
@@ -529,32 +453,26 @@ Represents information detected from macOS about a physical display.
 
 It contains:
 
-* Runtime display ID.
-* Persistent display ID.
-* Display name.
-* Pixel dimensions.
-* Detected physical dimensions.
-* Current calibrated physical dimensions.
-* Display position.
-* Primary-display state.
-* PPI calculation.
+* Runtime display ID
+* Persistent display ID
+* Display name
+* Pixel dimensions
+* Detected physical dimensions
+* Current calibrated physical dimensions
+* Display position
+* Primary-display state
+* PPI calculation
 
 PhysicalLayout
 
-Provides the physical coordinate system used by Screen Bean.
+Provides the physical coordinate system used by Screen Bean. The current model uses 1 unit as 1 physical inch, though this might be adjustable in settings to CM for international users. Other measurements are then derived from this base unit.
 
-The current model uses:
-
-1 unit = 1 physical inch
-
-and provides geometry calculations for:
-
-* Layout bounds.
-* Width.
-* Height.
-* Display rectangles.
-* Physical points.
-* Display gaps.
+* Layout bounds
+* Width
+* Height
+* Display rectangles
+* Physical points
+* Display gaps
 
 DisplayConfiguration
 
@@ -562,12 +480,12 @@ Represents Screen Bean’s persistent configuration for a display.
 
 It stores:
 
-* Persistent display ID.
-* Nickname.
-* Physical dimensions.
-* Physical X/Y position.
-* Rotation.
-* Calibration state.
+* Persistent display ID
+* Nickname
+* Physical dimensions
+* Physical X/Y position
+* Rotation
+* Calibration state
 
 DisplayConfigurationStore
 
@@ -577,161 +495,143 @@ This allows Screen Bean to restore display-specific configuration between launch
 
 ⸻
 
-Development Roadmap
+##Development Roadmap
 
 Phase 1 — Foundation
 
-* [x]	Detect displays automatically.
-* [x]	Read display names.
-* [x]	Read pixel dimensions.
-* [x]	Read physical dimensions.
-* [x]	Calculate PPI.
-* [x]	Establish persistent display identity.
-* [x]	Establish physical coordinate system.
-* [x]	Create persistent display configuration model.
-* [x]	Save display configuration.
-* [x]	Restore display configuration.
+* [x]	Detect displays automatically
+* [x]	Read display names
+* [x]	Read pixel dimensions
+* [x]	Read physical dimension's
+* [x]	Calculate PPI
+* [x]	Establish persistent display identity
+* [x]	Establish physical coordinate system
+* [x]	Create persistent display configuration model
+* [x]	Save display configuration
+* [x]	Restore display configuration
 * [x]	Display physical dimensions.
-* [x]	Automatically scale the layout to the available workspace.
+* [x]	Automatically scale the layout to the available workspace
 
 Phase 2 — Interactive Physical Workspace
 
-* [ ]	Pan workspace.
-* [ ]	Zoom workspace.
-* [ ]	Scale to Fit.
-* [ ]	Center View.
-* [ ]	Physical measurement grid.
-* [ ]	Rulers.
-* [ ]	Select displays.
-* [ ]	Drag displays.
-* [ ]	Rotate displays.
-* [ ]	Edit physical dimensions.
-* [ ]	Display calibration UI.
-* [ ]	Display color coding.
-* [ ]	Bezel visibility.
-* [ ]	Display transparency.
+* [ ]	Pan workspace
+* [ ]	Zoom workspace
+* [ ]	Scale to Fit
+* [ ]	Center View
+* [ ]	Physical measurement grid
+* [ ]	Rulers
+* [ ]	Select displays
+* [ ]	Drag displays
+* [ ]	Rotate displays
+* [ ]	Edit physical dimensions
+* [ ]	Display calibration UI
+* [ ]	Display color coding
+* [ ]	Bezel visibility
+* [ ]	Display transparency
 
 Phase 3 — Visual Calibration
 
-* [ ]	Import reference image.
-* [ ]	Position reference image.
-* [ ]	Scale reference image.
-* [ ]	Rotate reference image.
-* [ ]	Adjust reference transparency.
-* [ ]	Lock reference image.
+* [ ]	Import reference image
+* [ ]	Position reference image
+* [ ]	Scale reference image
+* [ ]	Rotate reference image
+* [ ]	Adjust reference transparency
+* [ ]	Lock reference image
 * [ ]	Four-corner perspective correction.
-* [ ]	Image warping.
+* [ ]	Image warping
 * [ ]	Lens/perspective compensation.
-* [ ]	Calibration patterns.
-* [ ]	Measurement guides.
-* [ ]	Alignment guides.
-* [ ]	Custom guides.
+* [ ]	Calibration patterns
+* [ ]	Measurement guides
+* [ ]	Alignment guides
+* [ ]	Custom guides
 
 Phase 4 — Unified Wallpaper
 
-* [ ]	Import wallpaper.
-* [ ]	Create unified physical canvas.
-* [ ]	Position and scale wallpaper.
-* [ ]	Preview wallpaper across displays.
-* [ ]	Account for display gaps.
-* [ ]	Account for display rotation.
-* [ ]	Calculate output resolution.
-* [ ]	Slice unified image into per-display images.
-* [ ]	Export display-specific wallpaper files.
+* [ ]	Import wallpaper
+* [ ]	Create unified physical canvas
+* [ ]	Position and scale wallpaper
+* [ ]	Preview wallpaper across displays
+* [ ]	Account for display gaps
+* [ ]	Account for display rotation
+* [ ]	Calculate output resolution
+* [ ]	Slice unified image into per-display images
+* [ ]	Export display-specific wallpaper files
 
 Phase 5 — Mouse Mapping
 
-* [ ]	Mouse calibration mode.
-* [ ]	Edge transport zones.
-* [ ]	Edge-segment mapping.
-* [ ]	Corner mapping.
-* [ ]	Arbitrary point correspondence.
-* [ ]	Coordinate interpolation.
-* [ ]	Custom mouse transition paths.
-* [ ]	Physical-topology-based transitions.
-* [ ]	Snapping and modifier-key controls.
+* [ ]	Mouse calibration mode
+* [ ]	Edge transport zones
+* [ ]	Edge-segment mapping
+* [ ]	Corner mapping
+* [ ]	Arbitrary point correspondence
+* [ ]	Coordinate interpolation
+* [ ]	Custom mouse transition paths
+* [ ]	Physical-topology-based transitions
+* [ ]	Snapping and modifier-key controls
 
 Phase 6 — Advanced Calibration
 
-* [ ]	Display-generated guide projection.
-* [ ]	Cross-display guide alignment.
-* [ ]	Multi-point calibration.
-* [ ]	Automated geometric transformations.
-* [ ]	Physical-scale calibration.
-* [ ]	Consistent reference-element sizing.
-* [ ]	Advanced perspective correction.
-* [ ]	Automated display-corner detection.
+* [ ]	Display-generated guide projection
+* [ ]	Cross-display guide alignment
+* [ ]	Multi-point calibration
+* [ ]	Automated geometric transformations
+* [ ]	Physical-scale calibration
+* [ ]	Consistent reference-element sizing
+* [ ]	Advanced perspective correction
+* [ ]	Automated display-corner detection
 
 Phase 7 — Export & Documentation
 
-* [ ]	PNG layout export.
-* [ ]	SVG layout export.
-* [ ]	PDF layout export.
-* [ ]	Installation diagrams.
-* [ ]	Measurement annotations.
-* [ ]	Calibration reports.
-* [ ]	Reusable layout templates.
+* [ ]	PNG layout export
+* [ ]	SVG layout export
+* [ ]	PDF layout export
+* [ ]	Installation diagrams
+* [ ]	Measurement annotations
+* [ ]	Calibration reports
+* [ ]	Reusable layout templates
 
 ⸻
 
-Design Principles
+##Design Principles
 
 Screen Bean should follow a few core principles as development continues.
 
-Physical reality first
+Physical reality first. The physical arrangement of the displays should be the canonical model. Don’t confuse pixels with inches. Resolution describes pixels. Physical dimensions describe the real-world display. Both are important, but they describe different things.
 
-The physical arrangement of the displays should be the canonical model.
+Visualization before automation. The user should be able to see and understand a proposed configuration before Screen Bean attempts to modify system behavior.
 
-Don’t confuse pixels with inches
+Calibration should be measurable. Whenever possible, Screen Bean should provide visual references, measurements, and explicit correspondence points rather than relying on guesswork.
 
-Resolution describes pixels.
+Progressive complexity. Basic display arrangement should remain simple. Advanced tools such as image warping and mouse mapping should become available when needed without overwhelming the basic workflow.
 
-Physical dimensions describe the real-world display.
-
-Both are important, but they describe different things.
-
-Visualization before automation
-
-The user should be able to see and understand a proposed configuration before Screen Bean attempts to modify system behavior.
-
-Calibration should be measurable
-
-Whenever possible, Screen Bean should provide visual references, measurements, and explicit correspondence points rather than relying on guesswork.
-
-Progressive complexity
-
-Basic display arrangement should remain simple.
-
-Advanced tools such as image warping and mouse mapping should become available when needed without overwhelming the basic workflow.
-
-Preserve detected information
-
-When the user calibrates a display, Screen Bean should preserve the original information reported by macOS rather than destroying it.
-
-This allows users to understand what was detected and what they changed.
+Preserve detected information. When the user calibrates a display, Screen Bean should preserve the original information reported by macOS rather than destroying it. This allows users to understand what was detected and what they changed.
 
 ⸻
 
-Long-Term Vision
+##Long-Term Vision
 
 The long-term goal is for Screen Bean to become a visual calibration and spatial mapping environment for multi-display systems.
 
-A user should eventually be able to:
+A user should be able to:
 
-1. Connect several displays.
-2. Have Screen Bean automatically identify them.
-3. Measure or calibrate their physical dimensions.
-4. Arrange them in a virtual physical workspace.
-5. Photograph the real installation.
-6. Align the virtual displays with the photograph.
-7. Correct perspective or lens distortion.
-8. Import a unified image and preview it across the entire installation.
-9. Export per-display wallpaper.
-10. Visually calibrate mouse transitions between displays.
-11. Create guides and alignment references.
-12. Export the complete installation as a documented layout.
+1. Connect several displays
+2. Have Screen Bean automatically identify them
+3. Measure or calibrate their physical dimensions
+4. Arrange them in a virtual physical workspace
+5. Photograph the real installation
+6. Align the virtual displays with the photograph
+7. Correct perspective or lens distortion
+8. Import a unified image and preview it across the entire installation
+9. Export per-display wallpaper
+10. Visually calibrate mouse transitions between displays
+11. Create guides and alignment references
+12. Export the complete installation as a documented layout
 
-The ultimate goal is not simply to provide another display-arrangement utility.
+The ultimate goal is not simply to provide another display-arrangement utility. It is to create a tool that understands where displays physically exist in space and how their pixels, geometry, and interactions relate to one another.
 
-It is to create a tool that understands where displays physically exist in space and how their pixels, geometry, and interactions relate to one another.
+These display configuration tools can also be used with projectors. The same 4k resolution that is measured in pixels per inch for monitor is often messured in picels per foot on a large projection. This could be used for a "foveated" display, where a lower density projected image is paired as a contextual extension of the main monitor, like peripheral vision. This setup is called a "focus-plus" display.
+
+https://www.patrickbaudisch.com/projects/focuspluscontextscreens/applications/index.html
+
+Similar approaches are used in video playback snd routing ststems for live events where multiple projectors and LED walls are combined with arbitary positions, shape, and sizes.
 
