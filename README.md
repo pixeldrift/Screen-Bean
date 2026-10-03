@@ -34,7 +34,7 @@ The current application can:
 
 The underlying architecture is built around a physical coordinate system so that more advanced calibration and mapping tools can be added without having to redesign the core geometry system.
 
-⸻
+---
 
 ## The Problem
 
@@ -64,7 +64,7 @@ The physical relationship between displays can be more important than their raw 
 
 Screen Bean is intended to make that physical relationship visible and editable.
 
-⸻
+---
 
 ## Core Concept
 
@@ -99,7 +99,7 @@ The physical model is independent of:
 
 Those systems become projections of the physical model.
 
-⸻
+---
 
 ## Display Detection
 
@@ -120,7 +120,7 @@ For each display, it collects information including:
 
 Where MacOS provides physical dimensions, those values are retained as the detected dimensions while users can then calibrate the dimensions manually. The original detected dimensions remain available so Screen Bean can distinguish between detected and calibrated measurements.
 
-⸻
+---
 
 ## Persistent Display Identity
 
@@ -137,7 +137,7 @@ Screen Bean uses Apple’s display UUID to identify the physical display across 
 
 Those details can then remain associated with the correct physical display.
 
-⸻
+---
 
 ## Physical Display Model
 
@@ -154,7 +154,7 @@ Each display is represented using physical geometry. A display has:
 
 Based on those factors, the physical workspace can then represent displays independently of how macOS currently arranges them.
 
-⸻
+---
 
 ## Workspace
 
@@ -176,7 +176,7 @@ Planned workspace features include:
 
 The grid background provides physical context while remaining visually subtle. A default grid spacing of approximately 6 inches is provided, with finer subdivisions available at higher zoom levels.
 
-⸻
+---
 
 ## Display Visualization
 
@@ -196,7 +196,7 @@ Planned visualization options include:
 
 This will make it possible to work with many displays without losing track of which physical monitor corresponds to which virtual display.
 
-⸻
+---
 
 ## Layout Reference Images
 
@@ -221,7 +221,7 @@ The goal is to compensate for photographs taken off access, wide angle lense dis
 
 Eventually, users may be able to identify the four corners of a photographed display and have Screen Bean rectify the image into the physical workspace.
 
-⸻
+---
 
 ## Unified Wallpaper Canvas
 
@@ -229,15 +229,15 @@ Screen Bean will eventually support importing a single image intended to span mu
 
 For example:
 
-┌──────────────────┬──────────────────────────┐
-│                  │                          │
-│    Display A     │        Display B        │
-│                  │                          │
-├──────────────────┼──────────────────────────┤
-│                  │                          │
-│    Display C     │        Display D        │
-│                  │                          │
-└──────────────────┴──────────────────────────┘
+    ┌──────────────────┬──────────────────────────┐
+    │                  │                          │
+    │    Display A     │        Display B         │
+    │                  │                          │
+    ├──────────────────┼──────────────────────────┤
+    │                  │                          │
+    │    Display C     │        Display D         │
+    │                  │                          │
+    └──────────────────┴──────────────────────────┘
               One unified image
 
 Users will be able to:
@@ -262,7 +262,7 @@ The slicing process should account for each display's properties.
 
 The goal is to produce output appropriate for displays with different physical sizes and resolutions while maintaining the intended physical composition.
 
-⸻
+---
 
 ## Layout Export
 
@@ -282,7 +282,7 @@ Exports may include:
 
 This will make Screen Bean useful not only as a configuration tool but also as a documentation and installation-planning tool.
 
-⸻
+---
 
 ## Mouse Calibration
 
@@ -298,11 +298,11 @@ A user could select an edge or section of an edge on one display and connect it 
 
 For example:
 
-┌──────────────┐─────▶┌──────────────┐
-│              │      │              │
-│   Display A  │      │   Display B  │
-│              │      │              │
-└──────────────┘─────▶└──────────────┘
+    ┌──────────────┐─────▶┌──────────────┐
+    │              │      │              │
+    │   Display A  │      │   Display B  │
+    │              │      │              │
+    └──────────────┘─────▶└──────────────┘
 
 The connected region becomes a mouse transport zone.
 
@@ -323,21 +323,9 @@ Screen Bean can use these correspondence points to calculate an interpolated map
 
 ### Corner Mapping
 
-Corners should be usable as calibration points.
+Corners should be usable as calibration points. This could eventually support mouse transitions that follow the physical topology of unusual multi-display installations.
 
-Possible mappings include:
-
-* Corner → corner
-* Corner → arbitrary point
-* Edge → edge
-* Edge segment → edge segment
-* Bottom → top
-* Right → left
-* Custom regions
-
-This could eventually support mouse transitions that follow the physical topology of unusual multi-display installations.
-
-⸻
+----
 
 ## Alignment Guides
 
@@ -356,22 +344,22 @@ Users should also be able to create custom guides. Guides can be projected into 
 
 For example:
 
-Display A                         Display B
-│                                 │
-│──────────── Guide ──────────────│
-│                                 │
-│                                 │
+    Display A                         Display B
+    │                                 │
+    │──────────── Guide ──────────────│
+    │                                 │
+    │                                 │
 
 Dragging or adjusting a guide should provide visual feedback on the corresponding location of other displays.
 
-⸻
+---
 
 ## Snapping
 
 Alignment tools will support snapping.
 
-* Option — temporarily disable snapping
-* Shift — constrain movement
+* Option - Temporarily disable snapping
+* Shift - Constrain movement
 
 Snapping targets could include:
 
@@ -381,7 +369,7 @@ Snapping targets could include:
 * Grid intersections
 * Guide lines
 
-⸻
+---
 
 ## Calibration Patterns
 
@@ -398,7 +386,7 @@ Screen Bean will be able to display calibration patterns on the physical display
 
 These patterns should make it possible to compare the virtual model against the physical installation.
 
-⸻
+---
 
 ## Consistent Physical Scale
 
@@ -412,7 +400,7 @@ For example, a 1-inch reference marker should represent approximately one physic
 
 Initially this will focus on Screen Bean’s own calibration and visualization tools. Global control over how third-party MacOS applications render their UI may not be possible without deeper system integration.
 
-⸻
+---
 
 ## Architecture
 
@@ -420,7 +408,7 @@ Screen Bean is being designed around a canonical physical coordinate system. The
 
 It allows the application to evolve from a simple visualization tool into a more sophisticated calibration and mapping system without making the UI coordinate system the foundation of the application.
 
-⸻
+---
 
 ## Current Architecture
 
@@ -472,7 +460,7 @@ Provides persistent storage for display configurations using UserDefaults and Co
 
 This allows Screen Bean to restore display-specific configuration between launches.
 
-⸻
+---
 
 ## Development Roadmap
 
@@ -524,7 +512,7 @@ This allows Screen Bean to restore display-specific configuration between launch
 * [ ]	Alignment guides
 * [ ]	Custom guides
 
-#### Phase 4 — Unified Wallpaper
+### Phase 4 — Unified Wallpaper
 
 * [ ]	Import wallpaper
 * [ ]	Create unified physical canvas
@@ -536,7 +524,7 @@ This allows Screen Bean to restore display-specific configuration between launch
 * [ ]	Slice unified image into per-display images
 * [ ]	Export display-specific wallpaper files
 
-#### Phase 5 — Mouse Mapping
+### Phase 5 — Mouse Mapping
 
 * [ ]	Mouse calibration mode
 * [ ]	Edge transport zones
@@ -548,7 +536,7 @@ This allows Screen Bean to restore display-specific configuration between launch
 * [ ]	Physical-topology-based transitions
 * [ ]	Snapping and modifier-key controls
 
-#### Phase 6 — Advanced Calibration
+### Phase 6 — Advanced Calibration
 
 * [ ]	Display-generated guide projection
 * [ ]	Cross-display guide alignment
@@ -559,7 +547,7 @@ This allows Screen Bean to restore display-specific configuration between launch
 * [ ]	Advanced perspective correction
 * [ ]	Automated display-corner detection
 
-#### Phase 7 — Export & Documentation
+### Phase 7 — Export & Documentation
 
 * [ ]	PNG layout export
 * [ ]	SVG layout export
@@ -569,23 +557,23 @@ This allows Screen Bean to restore display-specific configuration between launch
 * [ ]	Calibration reports
 * [ ]	Reusable layout templates
 
-⸻
+---
 
 ## Design Principles
 
 Screen Bean should follow a few core principles as development continues.
 
-*Physical reality first.* The physical arrangement of the displays should be the canonical model. Don’t confuse pixels with inches. Resolution describes pixels. Physical dimensions describe the real-world display. Both are important, but they describe different things.
+***Physical reality first.*** The physical arrangement of the displays should be the canonical model. Don’t confuse pixels with inches. Resolution describes pixels. Physical dimensions describe the real-world display. Both are important, but they describe different things.
 
-*Visualization before automation.* The user should be able to see and understand a proposed configuration before Screen Bean attempts to modify system behavior.
+***Visualization before automation.*** The user should be able to see and understand a proposed configuration before Screen Bean attempts to modify system behavior.
 
-*Calibration should be measurable.* Whenever possible, Screen Bean should provide visual references, measurements, and explicit correspondence points rather than relying on guesswork.
+***Calibration should be measurable.*** Whenever possible, Screen Bean should provide visual references, measurements, and explicit correspondence points rather than relying on guesswork.
 
-*Progressive complexity.* Basic display arrangement should remain simple. Advanced tools such as image warping and mouse mapping should become available when needed without overwhelming the basic workflow.
+***Progressive complexity.*** Basic display arrangement should remain simple. Advanced tools such as image warping and mouse mapping should become available when needed without overwhelming the basic workflow.
 
-Preserve detected information. When the user calibrates a display, Screen Bean should preserve the original information reported by macOS rather than destroying it. This allows users to understand what was detected and what they changed.
+***Preserve detected information.*** When the user calibrates a display, Screen Bean should preserve the original information reported by macOS rather than destroying it. This allows users to understand what was detected and what they changed.
 
-⸻
+---
 
 ## Long-Term Vision
 
