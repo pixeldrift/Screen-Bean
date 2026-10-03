@@ -10,7 +10,7 @@ Screen Bean aims to bridge that gap.
 
 Instead of treating displays as arbitrary pixel rectangles, Screen Bean creates a virtual physical workspace where displays can be represented according to their real-world dimensions and relationships.
 
-⸻
+---
 
 ## Current Status
 
