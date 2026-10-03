@@ -298,11 +298,11 @@ A user could select an edge or section of an edge on one display and connect it 
 
 For example:
 
-    ┌──────────────┐─────▶┌──────────────┐
-    │              │      │              │
-    │   Display A  │      │   Display B  │
-    │              │      │              │
-    └──────────────┘─────▶└──────────────┘
+    ┌──────────────┐ ─────▶┌──────────────┐
+    │              │       │              │
+    │   Display A  │       │   Display B  │
+    │              │       │              │
+    └──────────────┘ ─────▶└──────────────┘
 
 The connected region becomes a mouse transport zone.
 
@@ -310,16 +310,7 @@ When the mouse exits Display A through that region, Screen Bean can map the mous
 
 ### Point-Based Mapping
 
-Transport zones should not be limited to complete edges. Users should eventually be able to establish relationships between arbitrary points.
-
-For example:
-
-Display A                    Display B
-     A1 ─────────────────────── B1
-     A2 ─────────────────────── B2
-     A3 ─────────────────────── B3
-
-Screen Bean can use these correspondence points to calculate an interpolated mapping. This could allow unusual display arrangements and transitions that aren’t possible with simple rectangular edge matching.
+Transport zones should not be limited to complete edges. Users should eventually be able to establish relationships between arbitrary points. Screen Bean can use these correspondence points to calculate an interpolated mapping. This could allow unusual display arrangements and transitions that aren’t possible with simple rectangular edge matching.
 
 ### Corner Mapping
 
