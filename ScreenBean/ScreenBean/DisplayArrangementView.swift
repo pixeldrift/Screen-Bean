@@ -8,7 +8,6 @@ class DisplayArrangementView: NSView {
     var displays: [DisplayInfo] = [] {
         didSet {
             rebuildPhysicalLayout()
-            zoomToFit()
             needsDisplay = true
         }
     }
@@ -364,7 +363,8 @@ class DisplayArrangementView: NSView {
 
         let primaryDisplay =
             physicalLayout.displays.first {
-                $0.id == displays.first(where: {
+                $0.id ==
+                displays.first(where: {
                     $0.isPrimary
                 })?.displayID
             } ?? physicalLayout.displays[0]
