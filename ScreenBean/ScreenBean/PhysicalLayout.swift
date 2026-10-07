@@ -100,8 +100,8 @@ struct PhysicalLayout {
     ) -> CGPoint {
 
         CGPoint(
-            x: (x - minX) * scale,
-            y: (y - minY) * scale
+            x: x * scale,
+            y: y * scale
         )
     }
 
@@ -112,8 +112,8 @@ struct PhysicalLayout {
     ) -> CGRect {
 
         CGRect(
-            x: (display.x - minX) * scale,
-            y: (display.y - minY) * scale,
+            x: display.x * scale,
+            y: display.y * scale,
             width: display.width * scale,
             height: display.height * scale
         )

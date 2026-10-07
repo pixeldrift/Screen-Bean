@@ -3,11 +3,12 @@
 //  ScreenBean
 //
 import Cocoa
+
 class DisplayArrangementView: NSView {
     var displays: [DisplayInfo] = [] {
         didSet {
             rebuildPhysicalLayout()
-            scaleToFit()
+            zoomToFit()
             needsDisplay = true
         }
     }
@@ -17,24 +18,27 @@ class DisplayArrangementView: NSView {
     /// at the default zoom level.
     private let basePointsPerInch: CGFloat = 20.0
     /// Current workspace zoom.
-    private var zoom: CGFloat = 1.0
+    private var zoom: CGFloat = 0.5
     /// Workspace position in view coordinates.
     private var viewOffset = CGPoint.zero
     /// Used while panning the workspace.
     private var panStartPoint = CGPoint.zero
     private var panStartOffset = CGPoint.zero
     private var isPanning = false
+    
     // MARK: - Setup
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        scaleToFit()
+        zoomToFit(initialZoomFactor: 0.5)
     }
+    
     override func resizeSubviews(
         withOldSize oldSize: NSSize
     ) {
         super.resizeSubviews(withOldSize: oldSize)
-        scaleToFit()
+        zoomToFit()
     }
+    
     // MARK: - Layout
     private func rebuildPhysicalLayout() {
         guard !displays.isEmpty else {
@@ -54,20 +58,40 @@ class DisplayArrangementView: NSView {
         let inchesPerMacUnit =
             referencePhysicalWidth /
             referencePixelWidth
+        
+        
         let referenceX =
             CGFloat(referenceDisplay.positionX)
+
         let referenceY =
             CGFloat(referenceDisplay.positionY)
+
+        let referenceCenterX =
+            referenceX +
+            referencePhysicalWidth / 2
+
+        let referencePhysicalHeight =
+            max(
+                CGFloat(referenceDisplay.physicalHeightInches),
+                0.1
+            )
+
+        let referenceCenterY =
+            referenceY +
+            referencePhysicalHeight / 2
+        
+        
+        
         for display in displays {
             let pixelX =
                 CGFloat(display.positionX)
             let pixelY =
                 CGFloat(display.positionY)
             let physicalX =
-                (pixelX - referenceX) *
+                (pixelX - referenceCenterX) *
                 inchesPerMacUnit
             let physicalY =
-                (pixelY - referenceY) *
+                (pixelY - referenceCenterY) *
                 inchesPerMacUnit
             let physicalDisplay =
                 PhysicalLayout.Display(
@@ -91,6 +115,7 @@ class DisplayArrangementView: NSView {
                 displays: physicalDisplays
             )
     }
+    
     // MARK: - Coordinate Conversion
     private var pointsPerInch: CGFloat {
         basePointsPerInch * zoom
@@ -123,6 +148,7 @@ class DisplayArrangementView: NSView {
             dy: viewOffset.y
         )
     }
+    
     // MARK: - Drawing
     override func draw(
         _ dirtyRect: NSRect
@@ -152,11 +178,12 @@ class DisplayArrangementView: NSView {
             )
         }
     }
+    
     // MARK: - Grid
     private func drawGrid(
         in context: CGContext
     ) {
-        let gridSpacingInches: CGFloat = 6.0
+        let gridSpacingInches: CGFloat = 1.0
         let spacing =
             gridSpacingInches *
             pointsPerInch
@@ -174,7 +201,7 @@ class DisplayArrangementView: NSView {
         context.saveGState()
         context.setStrokeColor(
             NSColor.separatorColor
-                .withAlphaComponent(0.25)
+                .withAlphaComponent(0.05)
                 .cgColor
         )
         context.setLineWidth(1)
@@ -213,6 +240,7 @@ class DisplayArrangementView: NSView {
         context.strokePath()
         context.restoreGState()
     }
+    
     // MARK: - Display Drawing
     private func drawDisplay(
         _ display: PhysicalLayout.Display,
@@ -291,42 +319,68 @@ class DisplayArrangementView: NSView {
                 sizeAttributes
         )
     }
-    // MARK: - Scale to Fit
-    @objc func scaleToFit() {
+    
+    // MARK: - Zoom to Fit
+
+    @objc func zoomToFit(
+        initialZoomFactor: CGFloat = 1.0
+    ) {
 
         guard physicalLayout.width > 0,
-
               physicalLayout.height > 0 else {
-    
             return
-    
         }
-    
-        let availableWidth = bounds.width - 80
-        let availableHeight = bounds.height - 80
-        let scaleX = availableWidth /
+
+        let availableWidth =
+            bounds.width - 80
+
+        let availableHeight =
+            bounds.height - 80
+
+        let scaleX =
+            availableWidth /
             (physicalLayout.width * basePointsPerInch)
-        let scaleY = availableHeight /
+
+        let scaleY =
+            availableHeight /
             (physicalLayout.height * basePointsPerInch)
-        zoom = min(scaleX, scaleY)
+
+        let fitZoom =
+            min(scaleX, scaleY)
+
+        zoom =
+            fitZoom *
+            initialZoomFactor
+
         centerView()
     }
 
     // MARK: - Center View
     @objc func centerView() {
 
-        guard physicalLayout.width > 0,
-              physicalLayout.height > 0 else {
+        guard !physicalLayout.displays.isEmpty else {
             return
         }
-    
-        let layoutWidth = physicalLayout.width * basePointsPerInch * zoom
-        let layoutHeight = physicalLayout.height * basePointsPerInch * zoom
-    
+
+        let primaryDisplay =
+            physicalLayout.displays.first {
+                $0.id == displays.first(where: {
+                    $0.isPrimary
+                })?.displayID
+            } ?? physicalLayout.displays[0]
+
+        let primaryCenter =
+            physicalLayout.pointInView(
+                x: primaryDisplay.centerX,
+                y: primaryDisplay.centerY,
+                scale: pointsPerInch
+            )
+
         viewOffset = CGPoint(
-            x: (bounds.width - layoutWidth) / 2,
-            y: (bounds.height - layoutHeight) / 2
+            x: bounds.midX - primaryCenter.x,
+            y: bounds.midY - primaryCenter.y
         )
+
         needsDisplay = true
     }
     
@@ -371,6 +425,7 @@ class DisplayArrangementView: NSView {
     ) {
         isPanning = false
     }
+    
     // MARK: - Scroll Zoom
     override func scrollWheel(
         with event: NSEvent

@@ -38,6 +38,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         
+        let mainView = DisplayArrangementView()
+        mainView.wantsLayer = true
+        
         let centerButton = NSButton(
             title: "Center View",
             target: mainView,
@@ -45,9 +48,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         let fitButton = NSButton(
-            title: "Scale to Fit",
+            title: "Zoom to Fit",
             target: mainView,
-            action: #selector(DisplayArrangementView.scaleToFit)
+            action: #selector(DisplayArrangementView.zoomToFit)
         )
 
         centerButton.bezelStyle = .rounded
