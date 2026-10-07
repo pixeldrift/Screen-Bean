@@ -53,12 +53,49 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         centerButton.bezelStyle = .rounded
         fitButton.bezelStyle = .rounded
         
+        let buttonStack = NSStackView(
+            views: [
+                centerButton,
+                fitButton
+            ]
+        )
+        
+        buttonStack.orientation = .horizontal
+        buttonStack.spacing = 8
+        buttonStack.translatesAutoresizingMaskIntoConstraints = false
+                
         mainView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         
         mainView.displays = DisplayInfo.detectDisplays()
         mainView.setNeedsDisplay(mainView.bounds)
 
         mainView.needsDisplay = true // force redraw
+
+let container = NSView()
+container.translatesAutoresizingMaskIntoConstraints = false
+
+container.addSubview(mainView)
+container.addSubview(buttonStack)
+
+mainView.translatesAutoresizingMaskIntoConstraints = false
+
+NSLayoutConstraint.activate([
+    mainView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+    mainView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+    mainView.topAnchor.constraint(equalTo: container.topAnchor),
+    mainView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+
+    buttonStack.leadingAnchor.constraint(
+        equalTo: container.leadingAnchor,
+        constant: 12
+    ),
+
+    buttonStack.bottomAnchor.constraint(
+        equalTo: container.bottomAnchor,
+        constant: -12
+    )
+])
+
 
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1000, height: 600),
@@ -67,7 +104,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             defer: false
         )
         window.title = "ScreenBean"
-        window.contentView = mainView
+        window.contentView = container
         window.minSize = NSSize(width: 400, height: 300)
         window.center()
         window.makeKeyAndOrderFront(nil)
