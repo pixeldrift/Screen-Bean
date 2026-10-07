@@ -107,11 +107,11 @@ class DisplayArrangementView: NSView {
                 CGFloat(display.physicalHeightInches)
 
             let physicalCenterX =
-                (pixelX - referenceCenterX) *
+                -(pixelX - referenceCenterX) *
                 inchesPerMacUnit
 
             let physicalCenterY =
-                (pixelY - referenceCenterY) *
+                -(pixelY - referenceCenterY) *
                 inchesPerMacUnit
 
             let physicalX =
@@ -212,26 +212,19 @@ class DisplayArrangementView: NSView {
         in context: CGContext
     ) {
         let gridSpacingInches: CGFloat = 1.0
-        let spacing = gridSpacingInches * pointsPerInch
+        let spacing =
+            gridSpacingInches * pointsPerInch
 
         guard spacing > 2 else {
             return
         }
 
+        let originX = viewOffset.x
+        let originY = viewOffset.y
+
         context.saveGState()
 
-        // The physical origin (0,0), expressed in the same
-        // normalized coordinate system used to draw displays.
-        let originX =
-            (-physicalLayout.minX) * pointsPerInch +
-            viewOffset.x
-
-        let originY =
-            (-physicalLayout.minY) * pointsPerInch +
-            viewOffset.y
-
-        // MARK: Grid
-
+        // Grid
         context.setStrokeColor(
             NSColor.separatorColor
                 .withAlphaComponent(0.05)
@@ -240,7 +233,6 @@ class DisplayArrangementView: NSView {
 
         context.setLineWidth(1)
 
-        // Start at the first grid line at or before the view.
         var x = originX
 
         while x > 0 {
@@ -249,10 +241,7 @@ class DisplayArrangementView: NSView {
 
         while x < bounds.width {
             context.move(
-                to: CGPoint(
-                    x: x,
-                    y: 0
-                )
+                to: CGPoint(x: x, y: 0)
             )
 
             context.addLine(
@@ -273,10 +262,7 @@ class DisplayArrangementView: NSView {
 
         while y < bounds.height {
             context.move(
-                to: CGPoint(
-                    x: 0,
-                    y: y
-                )
+                to: CGPoint(x: 0, y: y)
             )
 
             context.addLine(
@@ -291,8 +277,7 @@ class DisplayArrangementView: NSView {
 
         context.strokePath()
 
-        // MARK: Cartesian Axes
-
+        // Cartesian axes
         context.setStrokeColor(
             NSColor.labelColor
                 .withAlphaComponent(0.25)
@@ -301,39 +286,33 @@ class DisplayArrangementView: NSView {
 
         context.setLineWidth(2)
 
-        // X axis — physical Y = 0
-        if originY >= 0 && originY <= bounds.height {
-            context.move(
-                to: CGPoint(
-                    x: 0,
-                    y: originY
-                )
+        context.move(
+            to: CGPoint(
+                x: originX,
+                y: 0
             )
+        )
 
-            context.addLine(
-                to: CGPoint(
-                    x: bounds.width,
-                    y: originY
-                )
+        context.addLine(
+            to: CGPoint(
+                x: originX,
+                y: bounds.height
             )
-        }
+        )
 
-        // Y axis — physical X = 0
-        if originX >= 0 && originX <= bounds.width {
-            context.move(
-                to: CGPoint(
-                    x: originX,
-                    y: 0
-                )
+        context.move(
+            to: CGPoint(
+                x: 0,
+                y: originY
             )
+        )
 
-            context.addLine(
-                to: CGPoint(
-                    x: originX,
-                    y: bounds.height
-                )
+        context.addLine(
+            to: CGPoint(
+                x: bounds.width,
+                y: originY
             )
-        }
+        )
 
         context.strokePath()
 
@@ -349,7 +328,7 @@ class DisplayArrangementView: NSView {
         context.saveGState()
         context.setFillColor(
             NSColor.systemTeal
-                .withAlphaComponent(0.75)
+                .withAlphaComponent(1)
                 .cgColor
         )
         context.fill(rect)
@@ -420,15 +399,21 @@ class DisplayArrangementView: NSView {
     }
     
     // MARK: - Zoom to Fit
-    @objc func zoomToFit(initialZoomFactor: CGFloat = 1.0) {
+    @objc func zoomToFit(
+        initialZoomFactor: CGFloat = 1.0
+    ) {
         guard physicalLayout.width > 0,
               physicalLayout.height > 0 else {
             return
         }
-
-        let bottomInset: CGFloat = 60
+        
+        print("VIEW:", bounds.width, bounds.height)
+        print("LAYOUT:", physicalLayout.width, physicalLayout.height)
+        print("BASE PPI:", basePointsPerInch)
+        
         let sideInset: CGFloat = 40
         let topInset: CGFloat = 40
+        let bottomInset: CGFloat = 60
 
         let availableWidth =
             bounds.width - sideInset * 2
@@ -441,45 +426,35 @@ class DisplayArrangementView: NSView {
             return
         }
 
-        let scaleX =
-            availableWidth / physicalLayout.width
+        let zoomX =
+            availableWidth /
+            (physicalLayout.width * basePointsPerInch)
 
-        let scaleY =
-            availableHeight / physicalLayout.height
+        let zoomY =
+            availableHeight /
+            (physicalLayout.height * basePointsPerInch)
 
-        let fitPointsPerInch =
-            min(scaleX, scaleY)
+        let fitZoom =
+            min(zoomX, zoomY)
 
         zoom =
-            (fitPointsPerInch / basePointsPerInch) *
-            initialZoomFactor
+            fitZoom * initialZoomFactor
 
         centerView()
     }
 
     // MARK: - Center View
     @objc func centerView() {
-        guard physicalLayout.width > 0,
-              physicalLayout.height > 0 else {
-            return
-        }
-
         let topInset: CGFloat = 40
         let bottomInset: CGFloat = 60
-
-        let layoutWidth =
-            physicalLayout.width * pointsPerInch
-
-        let layoutHeight =
-            physicalLayout.height * pointsPerInch
 
         let usableCenterY =
             topInset +
             (bounds.height - topInset - bottomInset) / 2
 
         viewOffset = CGPoint(
-            x: bounds.midX - layoutWidth / 2,
-            y: usableCenterY - layoutHeight / 2
+            x: bounds.midX,
+            y: usableCenterY
         )
 
         needsDisplay = true

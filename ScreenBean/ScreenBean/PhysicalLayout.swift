@@ -98,7 +98,6 @@ struct PhysicalLayout {
         y: CGFloat,
         scale: CGFloat
     ) -> CGPoint {
-
         CGPoint(
             x: x * scale,
             y: y * scale
@@ -110,19 +109,16 @@ struct PhysicalLayout {
         for display: Display,
         scale: CGFloat
     ) -> CGRect {
-
         CGRect(
-            x: display.x * scale,
-            y: display.y * scale,
+            x: (display.x - display.width / 2) * scale,
+            y: (display.y - display.height / 2) * scale,
             width: display.width * scale,
             height: display.height * scale
         )
     }
 
     // MARK: - Layout Information
-
     /// Returns the horizontal distance between two displays.
-    ///
     /// A negative value means they overlap.
     /// Zero means their edges touch.
     func horizontalGap(
