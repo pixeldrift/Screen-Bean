@@ -24,19 +24,39 @@ class DisplayArrangementView: NSView {
     private var panStartPoint = CGPoint.zero
     private var panStartOffset = CGPoint.zero
     private var isPanning = false
+    private var hasInitializedView = false
     
     // MARK: - Setup
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        zoomToFit(initialZoomFactor: 0.5)
+
+        guard window != nil else {
+            return
+        }
     }
     
     override func resizeSubviews(
         withOldSize oldSize: NSSize
     ) {
         super.resizeSubviews(withOldSize: oldSize)
-        zoomToFit()
+
     }
+    
+    override func layout() {
+        super.layout()
+
+        guard !hasInitializedView,
+              !physicalLayout.displays.isEmpty,
+              bounds.width > 0,
+              bounds.height > 0 else {
+            return
+        }
+
+        hasInitializedView = true
+
+        zoomToFit(initialZoomFactor: 0.5)
+    }
+    
     
     // MARK: - Layout
     private func rebuildPhysicalLayout() {
@@ -44,76 +64,85 @@ class DisplayArrangementView: NSView {
             physicalLayout = PhysicalLayout()
             return
         }
+
         var physicalDisplays: [PhysicalLayout.Display] = []
+
         let referenceDisplay = displays[0]
-        let referencePixelWidth = max(
-            CGFloat(referenceDisplay.pixelWidth),
-            1
-        )
-        let referencePhysicalWidth = max(
-            CGFloat(referenceDisplay.physicalWidthInches),
-            0.1
-        )
-        let inchesPerMacUnit =
-            referencePhysicalWidth /
-            referencePixelWidth
-        
-        
-        let referenceX =
-            CGFloat(referenceDisplay.positionX)
 
-        let referenceY =
-            CGFloat(referenceDisplay.positionY)
-
-        let referenceCenterX =
-            referenceX +
-            referencePhysicalWidth / 2
-
-        let referencePhysicalHeight =
+        let referencePixelWidth =
             max(
-                CGFloat(referenceDisplay.physicalHeightInches),
+                CGFloat(referenceDisplay.pixelWidth),
+                1
+            )
+
+        let referencePhysicalWidth =
+            max(
+                CGFloat(referenceDisplay.physicalWidthInches),
                 0.1
             )
 
+        let inchesPerMacUnit =
+            referencePhysicalWidth /
+            referencePixelWidth
+
+        let referenceCenterX =
+            CGFloat(referenceDisplay.positionX) +
+            CGFloat(referenceDisplay.pixelWidth) / 2
+
         let referenceCenterY =
-            referenceY +
-            referencePhysicalHeight / 2
-        
-        
-        
+            CGFloat(referenceDisplay.positionY) +
+            CGFloat(referenceDisplay.pixelHeight) / 2
+
         for display in displays {
             let pixelX =
                 CGFloat(display.positionX)
+
             let pixelY =
                 CGFloat(display.positionY)
-            let physicalX =
+
+            let physicalWidth =
+                CGFloat(display.physicalWidthInches)
+
+            let physicalHeight =
+                CGFloat(display.physicalHeightInches)
+
+            let physicalCenterX =
                 (pixelX - referenceCenterX) *
                 inchesPerMacUnit
-            let physicalY =
+
+            let physicalCenterY =
                 (pixelY - referenceCenterY) *
                 inchesPerMacUnit
+
+            let physicalX =
+                physicalCenterX -
+                physicalWidth / 2
+
+            let physicalY =
+                physicalCenterY -
+                physicalHeight / 2
+
             let physicalDisplay =
                 PhysicalLayout.Display(
                     id: display.displayID,
                     nickname: display.nickname,
                     x: physicalX,
                     y: physicalY,
-                    width: CGFloat(
-                        display.physicalWidthInches
-                    ),
-                    height: CGFloat(
-                        display.physicalHeightInches
-                    )
+                    width: physicalWidth,
+                    height: physicalHeight
                 )
+
             physicalDisplays.append(
                 physicalDisplay
             )
         }
+
         physicalLayout =
             PhysicalLayout(
                 displays: physicalDisplays
             )
     }
+    
     
     // MARK: - Coordinate Conversion
     private var pointsPerInch: CGFloat {
@@ -183,28 +212,41 @@ class DisplayArrangementView: NSView {
         in context: CGContext
     ) {
         let gridSpacingInches: CGFloat = 1.0
-        let spacing =
-            gridSpacingInches *
-            pointsPerInch
+        let spacing = gridSpacingInches * pointsPerInch
+
         guard spacing > 2 else {
             return
         }
-        let startX =
-            viewOffset.x.truncatingRemainder(
-                dividingBy: spacing
-            )
-        let startY =
-            viewOffset.y.truncatingRemainder(
-                dividingBy: spacing
-            )
+
         context.saveGState()
+
+        // The physical origin (0,0), expressed in the same
+        // normalized coordinate system used to draw displays.
+        let originX =
+            (-physicalLayout.minX) * pointsPerInch +
+            viewOffset.x
+
+        let originY =
+            (-physicalLayout.minY) * pointsPerInch +
+            viewOffset.y
+
+        // MARK: Grid
+
         context.setStrokeColor(
             NSColor.separatorColor
                 .withAlphaComponent(0.05)
                 .cgColor
         )
+
         context.setLineWidth(1)
-        var x = startX
+
+        // Start at the first grid line at or before the view.
+        var x = originX
+
+        while x > 0 {
+            x -= spacing
+        }
+
         while x < bounds.width {
             context.move(
                 to: CGPoint(
@@ -212,15 +254,23 @@ class DisplayArrangementView: NSView {
                     y: 0
                 )
             )
+
             context.addLine(
                 to: CGPoint(
                     x: x,
                     y: bounds.height
                 )
             )
+
             x += spacing
         }
-        var y = startY
+
+        var y = originY
+
+        while y > 0 {
+            y -= spacing
+        }
+
         while y < bounds.height {
             context.move(
                 to: CGPoint(
@@ -228,15 +278,65 @@ class DisplayArrangementView: NSView {
                     y: y
                 )
             )
+
             context.addLine(
                 to: CGPoint(
                     x: bounds.width,
                     y: y
                 )
             )
+
             y += spacing
         }
+
         context.strokePath()
+
+        // MARK: Cartesian Axes
+
+        context.setStrokeColor(
+            NSColor.labelColor
+                .withAlphaComponent(0.25)
+                .cgColor
+        )
+
+        context.setLineWidth(2)
+
+        // X axis — physical Y = 0
+        if originY >= 0 && originY <= bounds.height {
+            context.move(
+                to: CGPoint(
+                    x: 0,
+                    y: originY
+                )
+            )
+
+            context.addLine(
+                to: CGPoint(
+                    x: bounds.width,
+                    y: originY
+                )
+            )
+        }
+
+        // Y axis — physical X = 0
+        if originX >= 0 && originX <= bounds.width {
+            context.move(
+                to: CGPoint(
+                    x: originX,
+                    y: 0
+                )
+            )
+
+            context.addLine(
+                to: CGPoint(
+                    x: originX,
+                    y: bounds.height
+                )
+            )
+        }
+
+        context.strokePath()
+
         context.restoreGState()
     }
     
@@ -320,35 +420,38 @@ class DisplayArrangementView: NSView {
     }
     
     // MARK: - Zoom to Fit
-
-    @objc func zoomToFit(
-        initialZoomFactor: CGFloat = 1.0
-    ) {
-
+    @objc func zoomToFit(initialZoomFactor: CGFloat = 1.0) {
         guard physicalLayout.width > 0,
               physicalLayout.height > 0 else {
             return
         }
 
+        let bottomInset: CGFloat = 60
+        let sideInset: CGFloat = 40
+        let topInset: CGFloat = 40
+
         let availableWidth =
-            bounds.width - 80
+            bounds.width - sideInset * 2
 
         let availableHeight =
-            bounds.height - 80
+            bounds.height - topInset - bottomInset
+
+        guard availableWidth > 0,
+              availableHeight > 0 else {
+            return
+        }
 
         let scaleX =
-            availableWidth /
-            (physicalLayout.width * basePointsPerInch)
+            availableWidth / physicalLayout.width
 
         let scaleY =
-            availableHeight /
-            (physicalLayout.height * basePointsPerInch)
+            availableHeight / physicalLayout.height
 
-        let fitZoom =
+        let fitPointsPerInch =
             min(scaleX, scaleY)
 
         zoom =
-            fitZoom *
+            (fitPointsPerInch / basePointsPerInch) *
             initialZoomFactor
 
         centerView()
@@ -356,29 +459,27 @@ class DisplayArrangementView: NSView {
 
     // MARK: - Center View
     @objc func centerView() {
-
-        guard !physicalLayout.displays.isEmpty else {
+        guard physicalLayout.width > 0,
+              physicalLayout.height > 0 else {
             return
         }
 
-        let primaryDisplay =
-            physicalLayout.displays.first {
-                $0.id ==
-                displays.first(where: {
-                    $0.isPrimary
-                })?.displayID
-            } ?? physicalLayout.displays[0]
+        let topInset: CGFloat = 40
+        let bottomInset: CGFloat = 60
 
-        let primaryCenter =
-            physicalLayout.pointInView(
-                x: primaryDisplay.centerX,
-                y: primaryDisplay.centerY,
-                scale: pointsPerInch
-            )
+        let layoutWidth =
+            physicalLayout.width * pointsPerInch
+
+        let layoutHeight =
+            physicalLayout.height * pointsPerInch
+
+        let usableCenterY =
+            topInset +
+            (bounds.height - topInset - bottomInset) / 2
 
         viewOffset = CGPoint(
-            x: bounds.midX - primaryCenter.x,
-            y: bounds.midY - primaryCenter.y
+            x: bounds.midX - layoutWidth / 2,
+            y: usableCenterY - layoutHeight / 2
         )
 
         needsDisplay = true
