@@ -292,60 +292,44 @@ class DisplayArrangementView: NSView {
         )
     }
     // MARK: - Scale to Fit
-    func scaleToFit() {
+    @objc func scaleToFit() {
 
-    guard physicalLayout.width > 0,
+        guard physicalLayout.width > 0,
 
-          physicalLayout.height > 0 else {
-
-        return
-
+              physicalLayout.height > 0 else {
+    
+            return
+    
+        }
+    
+        let availableWidth = bounds.width - 80
+        let availableHeight = bounds.height - 80
+        let scaleX = availableWidth /
+            (physicalLayout.width * basePointsPerInch)
+        let scaleY = availableHeight /
+            (physicalLayout.height * basePointsPerInch)
+        zoom = min(scaleX, scaleY)
+        centerView()
     }
-
-    let availableWidth = bounds.width - 80
-
-    let availableHeight = bounds.height - 80
-
-    let scaleX = availableWidth /
-
-        (physicalLayout.width * basePointsPerInch)
-
-    let scaleY = availableHeight /
-
-        (physicalLayout.height * basePointsPerInch)
-
-    zoom = min(scaleX, scaleY)
-
-    centerView()
-
-}
 
     // MARK: - Center View
-    func centerView() {
+    @objc func centerView() {
 
-    guard physicalLayout.width > 0,
-
-          physicalLayout.height > 0 else {
-
-        return
-
+        guard physicalLayout.width > 0,
+              physicalLayout.height > 0 else {
+            return
+        }
+    
+        let layoutWidth = physicalLayout.width * basePointsPerInch * zoom
+        let layoutHeight = physicalLayout.height * basePointsPerInch * zoom
+    
+        viewOffset = CGPoint(
+            x: (bounds.width - layoutWidth) / 2,
+            y: (bounds.height - layoutHeight) / 2
+        )
+        needsDisplay = true
     }
-
-    let layoutWidth = physicalLayout.width * basePointsPerInch * zoom
-
-    let layoutHeight = physicalLayout.height * basePointsPerInch * zoom
-
-    viewOffset = CGPoint(
-
-        x: (bounds.width - layoutWidth) / 2,
-
-        y: (bounds.height - layoutHeight) / 2
-
-    )
-
-    needsDisplay = true
-
-}
+    
     // MARK: - Mouse Pan
     override func mouseDown(
         with event: NSEvent
