@@ -71,30 +71,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         mainView.needsDisplay = true // force redraw
 
-let container = NSView()
-container.translatesAutoresizingMaskIntoConstraints = false
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
 
-container.addSubview(mainView)
-container.addSubview(buttonStack)
+        container.addSubview(mainView)
+        container.addSubview(buttonStack)
 
-mainView.translatesAutoresizingMaskIntoConstraints = false
+        mainView.translatesAutoresizingMaskIntoConstraints = false
 
-NSLayoutConstraint.activate([
-    mainView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-    mainView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-    mainView.topAnchor.constraint(equalTo: container.topAnchor),
-    mainView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        NSLayoutConstraint.activate([
+            mainView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            mainView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            mainView.topAnchor.constraint(equalTo: container.topAnchor),
+            mainView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
 
-    buttonStack.leadingAnchor.constraint(
-        equalTo: container.leadingAnchor,
-        constant: 12
-    ),
+            buttonStack.leadingAnchor.constraint(
+                equalTo: container.leadingAnchor,
+                constant: 12
+            ),
 
-    buttonStack.bottomAnchor.constraint(
-        equalTo: container.bottomAnchor,
-        constant: -12
-    )
-])
+            buttonStack.bottomAnchor.constraint(
+                equalTo: container.bottomAnchor,
+                constant: -12
+            )
+        ])
 
 
         window = NSWindow(
