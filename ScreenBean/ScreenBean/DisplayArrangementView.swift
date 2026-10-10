@@ -8,6 +8,7 @@ class DisplayArrangementView: NSView {
     var displays: [DisplayInfo] = [] {
         didSet {
             rebuildPhysicalLayout()
+            needsLayout = true
             needsDisplay = true
         }
     }
@@ -26,7 +27,7 @@ class DisplayArrangementView: NSView {
     private var isPanning = false
     private var hasInitializedView = false
     
-    private var previousBounds: CGRect = .zero
+
     
     // MARK: - Setup
 
@@ -37,18 +38,19 @@ class DisplayArrangementView: NSView {
     override func layout() {
         super.layout()
 
-        let newBounds = bounds
-
-        if previousBounds != .zero {
-            let deltaX = newBounds.midX - previousBounds.midX
-            let deltaY = newBounds.midY - previousBounds.midY
-
-            viewOffset.x += deltaX
-            viewOffset.y += deltaY
+        guard !displays.isEmpty,
+              bounds.width > 0,
+              bounds.height > 0 else {
+            return
         }
 
-        previousBounds = newBounds
-        needsDisplay = true
+        if !hasInitializedView {
+            hasInitializedView = true
+            zoomToFit(initialZoomFactor: 0.5)
+            return
+        }
+
+        centerView()
     }
 
     
