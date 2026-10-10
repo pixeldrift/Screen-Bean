@@ -338,7 +338,40 @@ class DisplayArrangementView: NSView {
         rect: CGRect,
         isSelected: Bool
     ) {
+        // Width/height describe the active panel. Bezel measurements are physical
+        // inches, so expand the outside frame by bezel × current workspace scale.
+        let scale = pointsPerInch
+        let top = max(0, display.uniformBezel ? display.bezelTop : display.bezelTop) * scale
+        let bottom = max(0, display.bezelBottom) * scale
+        let left = max(0, display.bezelLeft) * scale
+        let right = max(0, display.bezelRight) * scale
+        let frameRect = rect.insetBy(dx: -left, dy: -bottom)
+            .insetBy(dx: -(right - left) / 2, dy: -(top - bottom) / 2)
+        // Correct the asymmetric expansion explicitly, preserving the screen rect.
+        let outerRect = CGRect(
+            x: rect.minX - left,
+            y: rect.minY - bottom,
+            width: rect.width + left + right,
+            height: rect.height + top + bottom
+        )
+
         context.saveGState()
+        // Subtle, scale-independent-looking drop shadow around the physical frame.
+        context.setShadow(offset: CGSize(width: 0, height: -2), blur: max(3, 7 * zoom),
+                         color: NSColor.black.withAlphaComponent(0.42).cgColor)
+        context.setFillColor(NSColor(calibratedWhite: 0.16, alpha: 1).cgColor)
+        context.fill(outerRect)
+        context.setShadow(offset: .zero, blur: 0, color: nil)
+        context.restoreGState()
+
+        // A restrained metallic edge, with the dark bezel measured in physical inches.
+        context.setFillColor(NSColor(calibratedWhite: 0.34, alpha: 1).cgColor)
+        context.fill(outerRect)
+        let innerFrame = outerRect.insetBy(dx: min(1.5, outerRect.width * 0.01),
+                                           dy: min(1.5, outerRect.height * 0.01))
+        context.setFillColor(NSColor(calibratedWhite: 0.09, alpha: 1).cgColor)
+        context.fill(innerFrame)
+
         let baseColor = Self.color(fromHex: display.colorHex)
         let light = baseColor.blended(withFraction: 0.20, of: .white) ?? baseColor
         let dark = baseColor.blended(withFraction: 0.24, of: .black) ?? baseColor
@@ -347,87 +380,39 @@ class DisplayArrangementView: NSView {
             context.saveGState()
             context.addRect(rect)
             context.clip()
-            context.drawLinearGradient(gradient, start: CGPoint(x: rect.maxX, y: rect.maxY), end: CGPoint(x: rect.minX, y: rect.minY), options: [])
+            context.drawLinearGradient(gradient, start: CGPoint(x: rect.maxX, y: rect.maxY),
+                                       end: CGPoint(x: rect.minX, y: rect.minY), options: [])
             context.restoreGState()
         } else {
             context.setFillColor(baseColor.cgColor)
             context.fill(rect)
         }
 
-        if isSelected {
-            context.setStrokeColor(
-                NSColor.controlAccentColor.cgColor
-            )
-            context.setLineWidth(4)
-        } else {
-            context.setStrokeColor(
-                NSColor.labelColor.cgColor
-            )
-            context.setLineWidth(2)
-        }
-
+        context.setStrokeColor(isSelected ? NSColor.controlAccentColor.cgColor : NSColor.labelColor.withAlphaComponent(0.45).cgColor)
+        context.setLineWidth(isSelected ? 2 : 1)
         context.stroke(rect)
-        context.restoreGState()
-        let paragraphStyle =
-            NSMutableParagraphStyle()
+
+        let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
-        let nameAttributes:
-            [NSAttributedString.Key: Any] = [
-                .font:
-                    NSFont.systemFont(
-                        ofSize: 14
-                    ),
-                .paragraphStyle:
-                    paragraphStyle,
-                .foregroundColor:
-                    NSColor.black
-            ]
-        let nameRect = CGRect(
-            x: rect.minX + 8,
-            y: rect.midY + 10,
-            width: max(
-                rect.width - 16,
-                1
-            ),
-            height: 20
-        )
-        display.nickname.draw(
-            in: nameRect,
-            withAttributes:
-                nameAttributes
-        )
-        let sizeText = String(
-            format: "%.1f × %.1f in",
-            display.width,
-            display.height
-        )
-        let sizeAttributes:
-            [NSAttributedString.Key: Any] = [
-                .font:
-                    NSFont.systemFont(
-                        ofSize: 11
-                    ),
-                .paragraphStyle:
-                    paragraphStyle,
-                .foregroundColor:
-                    NSColor.black
-            ]
-        let sizeRect = CGRect(
-            x: rect.minX + 8,
-            y: rect.midY - 12,
-            width: max(
-                rect.width - 16,
-                1
-            ),
-            height: 18
-        )
-        sizeText.draw(
-            in: sizeRect,
-            withAttributes:
-                sizeAttributes
-        )
+        let nameAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 14),
+            .paragraphStyle: paragraphStyle,
+            .foregroundColor: NSColor.black
+        ]
+        let nameRect = CGRect(x: rect.minX + 8, y: rect.midY + 10,
+                              width: max(rect.width - 16, 1), height: 20)
+        display.nickname.draw(in: nameRect, withAttributes: nameAttributes)
+        let sizeText = String(format: "%.1f × %.1f in", display.width, display.height)
+        let sizeAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11),
+            .paragraphStyle: paragraphStyle,
+            .foregroundColor: NSColor.black
+        ]
+        let sizeRect = CGRect(x: rect.minX + 8, y: rect.midY - 12,
+                              width: max(rect.width - 16, 1), height: 18)
+        sizeText.draw(in: sizeRect, withAttributes: sizeAttributes)
     }
-    
+
     // MARK: - Zoom to Fit
     @objc func zoomToFit(
         initialZoomFactor: CGFloat = 1.0
