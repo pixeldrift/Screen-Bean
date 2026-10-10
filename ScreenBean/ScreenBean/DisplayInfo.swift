@@ -40,6 +40,13 @@ struct DisplayInfo {
 
     var isPrimary: Bool
 
+    var colorHex: String = "28B7B0"
+    var uniformBezel: Bool = true
+    var bezelTop: Double = 0.25
+    var bezelBottom: Double = 0.25
+    var bezelLeft: Double = 0.25
+    var bezelRight: Double = 0.25
+
     var aspectRatio: Double {
         Double(pixelWidth) / Double(pixelHeight)
     }
@@ -110,7 +117,7 @@ struct DisplayInfo {
             let origin =
                 CGDisplayBounds(id).origin
 
-            let info = DisplayInfo(
+            var info = DisplayInfo(
                 displayID: id,
                 persistentID: persistentID(
                     for: id
@@ -131,6 +138,9 @@ struct DisplayInfo {
                 isPrimary: CGDisplayIsMain(id) != 0
             )
 
+            if let saved = DisplayConfigurationStore.shared.configuration(for: info.persistentID) {
+                info.apply(configuration: saved)
+            }
             infos.append(info)
         }
 
@@ -209,10 +219,16 @@ struct DisplayInfo {
             nickname: nickname,
             widthInches: physicalWidthInches,
             heightInches: physicalHeightInches,
-            xInches: 0,
-            yInches: 0,
+            xInches: positionX,
+            yInches: positionY,
             rotation: 0,
-            isCalibrated: isCalibrated
+            isCalibrated: isCalibrated,
+            colorHex: colorHex,
+            uniformBezel: uniformBezel,
+            bezelTop: bezelTop,
+            bezelBottom: bezelBottom,
+            bezelLeft: bezelLeft,
+            bezelRight: bezelRight
         )
     }
 
@@ -229,8 +245,15 @@ struct DisplayInfo {
         physicalHeightInches =
             configuration.heightInches
 
-        isCalibrated =
-            configuration.isCalibrated
+        isCalibrated = configuration.isCalibrated
+        positionX = configuration.xInches
+        positionY = configuration.yInches
+        colorHex = configuration.colorHex
+        uniformBezel = configuration.uniformBezel
+        bezelTop = configuration.bezelTop
+        bezelBottom = configuration.bezelBottom
+        bezelLeft = configuration.bezelLeft
+        bezelRight = configuration.bezelRight
     }
 
     // MARK: - Layout Helper
