@@ -12,6 +12,13 @@ class DisplayArrangementView: NSView {
             needsDisplay = true
         }
     }
+
+    /// The display currently selected in the workspace.
+    private(set) var selectedDisplayID: CGDirectDisplayID?
+
+    /// Notifies the app when workspace selection changes.
+    var onSelectionChanged: ((DisplayInfo?) -> Void)?
+
     private var physicalLayout = PhysicalLayout()
     // MARK: - Workspace Camera
     /// Number of view points used to represent one physical inch
@@ -199,7 +206,8 @@ class DisplayArrangementView: NSView {
             drawDisplay(
                 display,
                 in: context,
-                rect: rect
+                rect: rect,
+                isSelected: display.id == selectedDisplayID
             )
         }
     }
@@ -320,7 +328,8 @@ class DisplayArrangementView: NSView {
     private func drawDisplay(
         _ display: PhysicalLayout.Display,
         in context: CGContext,
-        rect: CGRect
+        rect: CGRect,
+        isSelected: Bool
     ) {
         context.saveGState()
         context.setFillColor(
@@ -329,10 +338,19 @@ class DisplayArrangementView: NSView {
                 .cgColor
         )
         context.fill(rect)
-        context.setStrokeColor(
-            NSColor.labelColor.cgColor
-        )
-        context.setLineWidth(2)
+
+        if isSelected {
+            context.setStrokeColor(
+                NSColor.controlAccentColor.cgColor
+            )
+            context.setLineWidth(4)
+        } else {
+            context.setStrokeColor(
+                NSColor.labelColor.cgColor
+            )
+            context.setLineWidth(2)
+        }
+
         context.stroke(rect)
         context.restoreGState()
         let paragraphStyle =
@@ -461,14 +479,31 @@ class DisplayArrangementView: NSView {
     override func mouseDown(
         with event: NSEvent
     ) {
-        panStartPoint =
-            convert(
-                event.locationInWindow,
-                from: nil
+        let point = convert(
+            event.locationInWindow,
+            from: nil
+        )
+
+        // Clicking a display selects it. Clicking empty workspace
+        // clears the selection and begins panning.
+        if let hit = physicalLayout.displays.reversed().first(where: {
+            physicalRectToView($0).contains(point)
+        }) {
+            selectedDisplayID = hit.id
+            onSelectionChanged?(
+                displays.first(where: { $0.displayID == hit.id })
             )
-        panStartOffset =
-            viewOffset
+            isPanning = false
+            needsDisplay = true
+            return
+        }
+
+        selectedDisplayID = nil
+        onSelectionChanged?(nil)
+        panStartPoint = point
+        panStartOffset = viewOffset
         isPanning = true
+        needsDisplay = true
     }
     override func mouseDragged(
         with event: NSEvent
