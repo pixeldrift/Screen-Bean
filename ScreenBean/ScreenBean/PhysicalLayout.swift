@@ -21,7 +21,14 @@ struct PhysicalLayout {
 
     struct Display {
         let id: CGDirectDisplayID
-        let nickname: String
+        var nickname: String
+        var persistentID: String = ""
+        var colorHex: String = "28B7B0"
+        var uniformBezel: Bool = true
+        var bezelTop: CGFloat = 0.25
+        var bezelBottom: CGFloat = 0.25
+        var bezelLeft: CGFloat = 0.25
+        var bezelRight: CGFloat = 0.25
 
         /// Position of the upper-left corner in physical inches.
         var x: CGFloat
@@ -110,8 +117,8 @@ struct PhysicalLayout {
         scale: CGFloat
     ) -> CGRect {
         CGRect(
-            x: (display.x - display.width / 2) * scale,
-            y: (display.y - display.height / 2) * scale,
+            x: display.x * scale,
+            y: display.y * scale,
             width: display.width * scale,
             height: display.height * scale
         )
