@@ -5,9 +5,10 @@
 import Cocoa
 
 class DisplayArrangementView: NSView {
+    private var suppressDisplayRebuild = false
     var displays: [DisplayInfo] = [] {
         didSet {
-            rebuildPhysicalLayout()
+            if !suppressDisplayRebuild { rebuildPhysicalLayout() }
             needsLayout = true
             needsDisplay = true
         }
@@ -18,6 +19,7 @@ class DisplayArrangementView: NSView {
 
     /// Notifies the app when workspace selection changes.
     var onSelectionChanged: ((DisplayInfo?) -> Void)?
+    var onDisplayValuesChanged: ((DisplayInfo?, CGFloat, CGFloat) -> Void)?
 
     private var physicalLayout = PhysicalLayout()
     // MARK: - Workspace Camera
@@ -129,15 +131,17 @@ class DisplayArrangementView: NSView {
                 physicalCenterY -
                 physicalHeight / 2
 
-            let physicalDisplay =
-                PhysicalLayout.Display(
-                    id: display.displayID,
-                    nickname: display.nickname,
-                    x: physicalX,
-                    y: physicalY,
-                    width: physicalWidth,
-                    height: physicalHeight
-                )
+            let saved = DisplayConfigurationStore.shared.configuration(for: display.persistentID)
+            let physicalDisplay = PhysicalLayout.Display(
+                id: display.displayID, nickname: display.nickname,
+                persistentID: display.persistentID, colorHex: display.colorHex,
+                uniformBezel: display.uniformBezel,
+                bezelTop: CGFloat(display.bezelTop), bezelBottom: CGFloat(display.bezelBottom),
+                bezelLeft: CGFloat(display.bezelLeft), bezelRight: CGFloat(display.bezelRight),
+                x: CGFloat(saved?.xInches ?? Double(physicalX)),
+                y: CGFloat(saved?.yInches ?? Double(physicalY)),
+                width: physicalWidth, height: physicalHeight
+            )
 
             physicalDisplays.append(
                 physicalDisplay
@@ -335,12 +339,20 @@ class DisplayArrangementView: NSView {
         isSelected: Bool
     ) {
         context.saveGState()
-        context.setFillColor(
-            NSColor.systemTeal
-                .withAlphaComponent(1)
-                .cgColor
-        )
-        context.fill(rect)
+        let baseColor = Self.color(fromHex: display.colorHex)
+        let light = baseColor.blended(withFraction: 0.20, of: .white) ?? baseColor
+        let dark = baseColor.blended(withFraction: 0.24, of: .black) ?? baseColor
+        let colors = [light.cgColor, baseColor.cgColor, dark.cgColor] as CFArray
+        if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 0.55, 1]) {
+            context.saveGState()
+            context.addRect(rect)
+            context.clip()
+            context.drawLinearGradient(gradient, start: CGPoint(x: rect.maxX, y: rect.maxY), end: CGPoint(x: rect.minX, y: rect.minY), options: [])
+            context.restoreGState()
+        } else {
+            context.setFillColor(baseColor.cgColor)
+            context.fill(rect)
+        }
 
         if isSelected {
             context.setStrokeColor(
@@ -531,7 +543,11 @@ class DisplayArrangementView: NSView {
 
             physicalLayout.displays[index].x = dragStartDisplayOrigin.x + dx
             physicalLayout.displays[index].y = dragStartDisplayOrigin.y + dy
+            syncSelectedLayoutToDisplay(save: false)
             needsDisplay = true
+            if let info = selectedDisplayInfo() {
+                onDisplayValuesChanged?(info, physicalLayout.displays[index].x, physicalLayout.displays[index].y)
+            }
             return
         }
 
@@ -551,9 +567,68 @@ class DisplayArrangementView: NSView {
         with event: NSEvent
     ) {
         isPanning = false
+        if draggingDisplayID != nil {
+            syncSelectedLayoutToDisplay(save: true)
+            if let info = selectedDisplayInfo(), let item = physicalLayout.displays.first(where: { $0.id == info.displayID }) {
+                onDisplayValuesChanged?(info, item.x, item.y)
+            }
+        }
         draggingDisplayID = nil
     }
     
+
+    func selectedDisplayInfo() -> DisplayInfo? {
+        guard let id = selectedDisplayID else { return nil }
+        return displays.first(where: { $0.displayID == id })
+    }
+
+    func selectedPosition() -> (x: CGFloat, y: CGFloat)? {
+        guard let id = selectedDisplayID, let item = physicalLayout.displays.first(where: { $0.id == id }) else { return nil }
+        return (item.x, item.y)
+    }
+
+    func updateSelectedDisplay(nickname: String? = nil, width: Double? = nil, height: Double? = nil, x: Double? = nil, y: Double? = nil, color: NSColor? = nil, uniformBezel: Bool? = nil, bezelTop: Double? = nil, bezelBottom: Double? = nil, bezelLeft: Double? = nil, bezelRight: Double? = nil) {
+        guard let id = selectedDisplayID, let i = displays.firstIndex(where: { $0.displayID == id }), let j = physicalLayout.displays.firstIndex(where: { $0.id == id }) else { return }
+        suppressDisplayRebuild = true
+        if let nickname, !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { displays[i].nickname = nickname; physicalLayout.displays[j].nickname = nickname }
+        if let width, width > 0.1 { displays[i].physicalWidthInches = width; physicalLayout.displays[j].width = width }
+        if let height, height > 0.1 { displays[i].physicalHeightInches = height; physicalLayout.displays[j].height = height }
+        if let x { physicalLayout.displays[j].x = x }
+        if let y { physicalLayout.displays[j].y = y }
+        if let color { displays[i].colorHex = Self.hex(from: color); physicalLayout.displays[j].colorHex = Self.hex(from: color) }
+        if let uniformBezel { displays[i].uniformBezel = uniformBezel; physicalLayout.displays[j].uniformBezel = uniformBezel }
+        if let bezelTop { displays[i].bezelTop = bezelTop; physicalLayout.displays[j].bezelTop = bezelTop }
+        if let bezelBottom { displays[i].bezelBottom = bezelBottom; physicalLayout.displays[j].bezelBottom = bezelBottom }
+        if let bezelLeft { displays[i].bezelLeft = bezelLeft; physicalLayout.displays[j].bezelLeft = bezelLeft }
+        if let bezelRight { displays[i].bezelRight = bezelRight; physicalLayout.displays[j].bezelRight = bezelRight }
+        suppressDisplayRebuild = false
+        syncSelectedLayoutToDisplay(save: true)
+        needsDisplay = true
+        onDisplayValuesChanged?(displays[i], physicalLayout.displays[j].x, physicalLayout.displays[j].y)
+    }
+
+    private func syncSelectedLayoutToDisplay(save: Bool) {
+        guard let id = selectedDisplayID, let item = physicalLayout.displays.first(where: { $0.id == id }), let i = displays.firstIndex(where: { $0.displayID == id }) else { return }
+        var configuration = displays[i].makeConfiguration()
+        configuration.xInches = Double(item.x); configuration.yInches = Double(item.y)
+        configuration.widthInches = displays[i].physicalWidthInches; configuration.heightInches = displays[i].physicalHeightInches
+        configuration.nickname = displays[i].nickname; configuration.colorHex = displays[i].colorHex
+        configuration.uniformBezel = displays[i].uniformBezel
+        configuration.bezelTop = displays[i].bezelTop; configuration.bezelBottom = displays[i].bezelBottom
+        configuration.bezelLeft = displays[i].bezelLeft; configuration.bezelRight = displays[i].bezelRight
+        if save { DisplayConfigurationStore.shared.save(configuration) }
+    }
+
+    private static func color(fromHex hex: String) -> NSColor {
+        let v = UInt64(hex, radix: 16) ?? 0x28B7B0
+        return NSColor(red: CGFloat((v >> 16) & 255) / 255, green: CGFloat((v >> 8) & 255) / 255, blue: CGFloat(v & 255) / 255, alpha: 1)
+    }
+
+    private static func hex(from color: NSColor) -> String {
+        guard let c = color.usingColorSpace(.deviceRGB) else { return "28B7B0" }
+        return String(format: "%02X%02X%02X", Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
+    }
+
     // MARK: - Scroll Zoom
     override func scrollWheel(
         with event: NSEvent
