@@ -341,12 +341,14 @@ class DisplayArrangementView: NSView {
         // Width/height describe the active panel. Bezel measurements are physical
         // inches, so expand the outside frame by bezel × current workspace scale.
         let scale = pointsPerInch
-        let top = max(0, display.uniformBezel ? display.bezelTop : display.bezelTop) * scale
-        let bottom = max(0, display.bezelBottom) * scale
-        let left = max(0, display.bezelLeft) * scale
-        let right = max(0, display.bezelRight) * scale
-        let frameRect = rect.insetBy(dx: -left, dy: -bottom)
-            .insetBy(dx: -(right - left) / 2, dy: -(top - bottom) / 2)
+        let topInches = display.uniformBezel ? display.bezelTop : display.bezelTop
+        let bottomInches = display.uniformBezel ? display.bezelTop : display.bezelBottom
+        let leftInches = display.uniformBezel ? display.bezelTop : display.bezelLeft
+        let rightInches = display.uniformBezel ? display.bezelTop : display.bezelRight
+        let top = max(0, topInches) * scale
+        let bottom = max(0, bottomInches) * scale
+        let left = max(0, leftInches) * scale
+        let right = max(0, rightInches) * scale
         // Correct the asymmetric expansion explicitly, preserving the screen rect.
         let outerRect = CGRect(
             x: rect.minX - left,
