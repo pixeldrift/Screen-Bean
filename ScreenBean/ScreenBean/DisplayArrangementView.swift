@@ -32,6 +32,9 @@ class DisplayArrangementView: NSView {
     private var panStartPoint = CGPoint.zero
     private var panStartOffset = CGPoint.zero
     private var isPanning = false
+    private var draggingDisplayID: CGDirectDisplayID?
+    private var dragStartPoint = CGPoint.zero
+    private var dragStartDisplayOrigin = CGPoint.zero
     private var hasInitializedView = false
     
 
@@ -494,6 +497,14 @@ class DisplayArrangementView: NSView {
                 displays.first(where: { $0.displayID == hit.id })
             )
             isPanning = false
+            draggingDisplayID = hit.id
+            dragStartPoint = point
+            if let selectedLayoutDisplay = physicalLayout.displays.first(where: { $0.id == hit.id }) {
+                dragStartDisplayOrigin = CGPoint(
+                    x: selectedLayoutDisplay.x,
+                    y: selectedLayoutDisplay.y
+                )
+            }
             needsDisplay = true
             return
         }
@@ -508,20 +519,28 @@ class DisplayArrangementView: NSView {
     override func mouseDragged(
         with event: NSEvent
     ) {
+        let currentPoint = convert(event.locationInWindow, from: nil)
+
+        if let draggingDisplayID {
+            let dx = (currentPoint.x - dragStartPoint.x) / pointsPerInch
+            let dy = (currentPoint.y - dragStartPoint.y) / pointsPerInch
+
+            guard let index = physicalLayout.displays.firstIndex(where: { $0.id == draggingDisplayID }) else {
+                return
+            }
+
+            physicalLayout.displays[index].x = dragStartDisplayOrigin.x + dx
+            physicalLayout.displays[index].y = dragStartDisplayOrigin.y + dy
+            needsDisplay = true
+            return
+        }
+
         guard isPanning else {
             return
         }
-        let currentPoint =
-            convert(
-                event.locationInWindow,
-                from: nil
-            )
-        let dx =
-            currentPoint.x -
-            panStartPoint.x
-        let dy =
-            currentPoint.y -
-            panStartPoint.y
+
+        let dx = currentPoint.x - panStartPoint.x
+        let dy = currentPoint.y - panStartPoint.y
         viewOffset = CGPoint(
             x: panStartOffset.x + dx,
             y: panStartOffset.y + dy
@@ -532,6 +551,7 @@ class DisplayArrangementView: NSView {
         with event: NSEvent
     ) {
         isPanning = false
+        draggingDisplayID = nil
     }
     
     // MARK: - Scroll Zoom
