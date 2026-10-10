@@ -219,8 +219,8 @@ struct DisplayInfo {
             nickname: nickname,
             widthInches: physicalWidthInches,
             heightInches: physicalHeightInches,
-            xInches: positionX,
-            yInches: positionY,
+            xInches: 0,
+            yInches: 0,
             rotation: 0,
             isCalibrated: isCalibrated,
             colorHex: colorHex,
@@ -246,8 +246,6 @@ struct DisplayInfo {
             configuration.heightInches
 
         isCalibrated = configuration.isCalibrated
-        positionX = configuration.xInches
-        positionY = configuration.yInches
         colorHex = configuration.colorHex
         uniformBezel = configuration.uniformBezel
         bezelTop = configuration.bezelTop
