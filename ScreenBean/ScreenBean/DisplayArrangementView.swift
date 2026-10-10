@@ -338,24 +338,21 @@ class DisplayArrangementView: NSView {
         rect: CGRect,
         isSelected: Bool
     ) {
-        // Width/height describe the active panel. Bezel measurements are physical
-        // inches, so expand the outside frame by bezel × current workspace scale.
-        let scale = pointsPerInch
-        let topInches = display.uniformBezel ? display.bezelTop : display.bezelTop
-        let bottomInches = display.uniformBezel ? display.bezelTop : display.bezelBottom
-        let leftInches = display.uniformBezel ? display.bezelTop : display.bezelLeft
-        let rightInches = display.uniformBezel ? display.bezelTop : display.bezelRight
-        let top = max(0, topInches) * scale
-        let bottom = max(0, bottomInches) * scale
-        let left = max(0, leftInches) * scale
-        let right = max(0, rightInches) * scale
-        // Correct the asymmetric expansion explicitly, preserving the screen rect.
-        let outerRect = CGRect(
-            x: rect.minX - left,
-            y: rect.minY - bottom,
-            width: rect.width + left + right,
-            height: rect.height + top + bottom
-        )
+        context.saveGState()
+        let baseColor = Self.color(fromHex: display.colorHex)
+        let light = baseColor.blended(withFraction: 0.20, of: .white) ?? baseColor
+        let dark = baseColor.blended(withFraction: 0.24, of: .black) ?? baseColor
+        let colors = [light.cgColor, baseColor.cgColor, dark.cgColor] as CFArray
+        if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 0.55, 1]) {
+            context.saveGState()
+            context.addRect(rect)
+            context.clip()
+            context.drawLinearGradient(gradient, start: CGPoint(x: rect.maxX, y: rect.maxY), end: CGPoint(x: rect.minX, y: rect.minY), options: [])
+            context.restoreGState()
+        } else {
+            context.setFillColor(baseColor.cgColor)
+            context.fill(rect)
+        }
 
         context.saveGState()
         // Subtle, scale-independent-looking drop shadow around the physical frame.
