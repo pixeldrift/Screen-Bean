@@ -5,9 +5,10 @@
 import Cocoa
 
 class DisplayArrangementView: NSView {
+    private var suppressDisplayRebuild = false
     var displays: [DisplayInfo] = [] {
         didSet {
-            rebuildPhysicalLayout()
+            if !suppressDisplayRebuild { rebuildPhysicalLayout() }
             needsLayout = true
             needsDisplay = true
         }
@@ -588,6 +589,7 @@ class DisplayArrangementView: NSView {
 
     func updateSelectedDisplay(nickname: String? = nil, width: Double? = nil, height: Double? = nil, x: Double? = nil, y: Double? = nil, color: NSColor? = nil, uniformBezel: Bool? = nil, bezelTop: Double? = nil, bezelBottom: Double? = nil, bezelLeft: Double? = nil, bezelRight: Double? = nil) {
         guard let id = selectedDisplayID, let i = displays.firstIndex(where: { $0.displayID == id }), let j = physicalLayout.displays.firstIndex(where: { $0.id == id }) else { return }
+        suppressDisplayRebuild = true
         if let nickname, !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { displays[i].nickname = nickname; physicalLayout.displays[j].nickname = nickname }
         if let width, width > 0.1 { displays[i].physicalWidthInches = width; physicalLayout.displays[j].width = width }
         if let height, height > 0.1 { displays[i].physicalHeightInches = height; physicalLayout.displays[j].height = height }
@@ -599,6 +601,7 @@ class DisplayArrangementView: NSView {
         if let bezelBottom { displays[i].bezelBottom = bezelBottom; physicalLayout.displays[j].bezelBottom = bezelBottom }
         if let bezelLeft { displays[i].bezelLeft = bezelLeft; physicalLayout.displays[j].bezelLeft = bezelLeft }
         if let bezelRight { displays[i].bezelRight = bezelRight; physicalLayout.displays[j].bezelRight = bezelRight }
+        suppressDisplayRebuild = false
         syncSelectedLayoutToDisplay(save: true)
         needsDisplay = true
         onDisplayValuesChanged?(displays[i], physicalLayout.displays[j].x, physicalLayout.displays[j].y)
