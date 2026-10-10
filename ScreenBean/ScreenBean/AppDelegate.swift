@@ -50,7 +50,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let fitButton = NSButton(
             title: "Zoom to Fit",
             target: mainView,
-            action: #selector(DisplayArrangementView.zoomToFit)
+            action: #selector(DisplayArrangementView.zoomToFitFromButton)
         )
 
         centerButton.bezelStyle = .rounded

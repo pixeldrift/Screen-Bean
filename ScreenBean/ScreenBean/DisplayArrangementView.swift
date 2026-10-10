@@ -26,36 +26,31 @@ class DisplayArrangementView: NSView {
     private var isPanning = false
     private var hasInitializedView = false
     
+    private var previousBounds: CGRect = .zero
+    
     // MARK: - Setup
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-
-        guard window != nil else {
-            return
-        }
     }
-    
-    override func resizeSubviews(
-        withOldSize oldSize: NSSize
-    ) {
-        super.resizeSubviews(withOldSize: oldSize)
 
-    }
-    
     override func layout() {
         super.layout()
 
-        guard !hasInitializedView,
-              !physicalLayout.displays.isEmpty,
-              bounds.width > 0,
-              bounds.height > 0 else {
-            return
+        let newBounds = bounds
+
+        if previousBounds != .zero {
+            let deltaX = newBounds.midX - previousBounds.midX
+            let deltaY = newBounds.midY - previousBounds.midY
+
+            viewOffset.x += deltaX
+            viewOffset.y += deltaY
         }
 
-        hasInitializedView = true
-
-        zoomToFit(initialZoomFactor: 0.5)
+        previousBounds = newBounds
+        needsDisplay = true
     }
+
     
     
     // MARK: - Layout
@@ -406,11 +401,7 @@ class DisplayArrangementView: NSView {
               physicalLayout.height > 0 else {
             return
         }
-        
-        print("VIEW:", bounds.width, bounds.height)
-        print("LAYOUT:", physicalLayout.width, physicalLayout.height)
-        print("BASE PPI:", basePointsPerInch)
-        
+                
         let sideInset: CGFloat = 40
         let topInset: CGFloat = 40
         let bottomInset: CGFloat = 60
@@ -436,17 +427,21 @@ class DisplayArrangementView: NSView {
 
         let fitZoom =
             min(zoomX, zoomY)
-
-        zoom =
-            fitZoom * initialZoomFactor
-
+        
+        zoom = fitZoom * initialZoomFactor
+        
         centerView()
+        
+    }
+    
+    @objc func zoomToFitFromButton() {
+        zoomToFit(initialZoomFactor: 1.0)
     }
 
     // MARK: - Center View
     @objc func centerView() {
-        let topInset: CGFloat = 40
-        let bottomInset: CGFloat = 60
+        let topInset: CGFloat = 60
+        let bottomInset: CGFloat = 40
 
         let usableCenterY =
             topInset +
