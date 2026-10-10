@@ -2,6 +2,7 @@ import Cocoa
 
 final class ScrubbableNumberField: NSTextField {
     var scrubScale: Double = 0.05
+    var minimumValue: Double = 0
     private var start = CGPoint.zero
     private var startValue = 0.0
     private var scrubbing = false
@@ -20,7 +21,7 @@ final class ScrubbableNumberField: NSTextField {
     override func mouseDragged(with event: NSEvent) {
         guard scrubbing else { super.mouseDragged(with: event); return }
         let delta = Double(event.locationInWindow.x - start.x) - Double(event.locationInWindow.y - start.y)
-        doubleValue = max(0, startValue + delta * scrubScale)
+        doubleValue = max(minimumValue, startValue + delta * scrubScale)
         sendAction(action, to: target)
     }
     override func mouseUp(with event: NSEvent) {
@@ -36,7 +37,7 @@ final class DisplayInspectorView: NSView {
     private let height = ScrubbableNumberField(string: "")
     private let x = ScrubbableNumberField(string: "")
     private let y = ScrubbableNumberField(string: "")
-    private let color = NSColorWell()
+    private let color = NSColorWell(frame: .zero)
     private let uniform = NSButton(checkboxWithTitle: "Uniform bezel", target: nil, action: nil)
     private let bezel = ScrubbableNumberField(string: "")
     private let slider = NSSlider(value: 0.25, minValue: 0, maxValue: 2, target: nil, action: nil)
@@ -72,6 +73,7 @@ final class DisplayInspectorView: NSView {
             f.widthAnchor.constraint(equalToConstant: 68).isActive = true
         }
         width.scrubScale = 0.1; height.scrubScale = 0.1; x.scrubScale = 0.1; y.scrubScale = 0.1
+        x.minimumValue = -100000; y.minimumValue = -100000
         uniform.target = self; uniform.action = #selector(uniformChanged)
         color.target = self; color.action = #selector(colorChanged)
         slider.target = self; slider.action = #selector(sliderChanged)
