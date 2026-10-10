@@ -135,7 +135,7 @@ final class DisplayInspectorView: NSView {
         else if sender === left { emit(l: left.doubleValue) }
         else if sender === right { emit(r: right.doubleValue) }
     }
-    @objc private func uniformChanged() { emit(uniform: uniform.state == .on); refresh(display, x: px, y: py) }
+    @objc private func uniformChanged() { emit(uniform: uniform.state == .on) }
     @objc private func sliderChanged() { uniformBezelValue(slider.doubleValue) }
     @objc private func colorChanged() { emit(color: color.color) }
     private func uniformBezelValue(_ v: Double) { bezel.doubleValue = v; emit(uniform: true, t: v, b: v, l: v, r: v) }
