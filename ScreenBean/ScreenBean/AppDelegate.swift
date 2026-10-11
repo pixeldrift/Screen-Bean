@@ -24,8 +24,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let mainView = DisplayArrangementView()
         mainView.wantsLayer = true
         mainView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-        let inspector = DisplayInspectorView()
-        inspector.translatesAutoresizingMaskIntoConstraints = false
+        let sidebar = SidebarView()
+        let inspector = sidebar.inspector
+        sidebar.translatesAutoresizingMaskIntoConstraints = false
         inspector.onChange = { nickname, width, height, x, y, color, uniform, top, bottom, left, right in
             mainView.updateSelectedDisplay(
                 nickname: nickname, width: width, height: height,
@@ -33,9 +34,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 bezelTop: top, bezelBottom: bottom, bezelLeft: left, bezelRight: right
             )
         }
-        mainView.onSelectionChanged = { [weak mainView, weak inspector] display in
+        mainView.onSelectionChanged = { [weak mainView, weak sidebar] display in
+            sidebar?.setDisplaySelected(display != nil)
             let position = mainView?.selectedPosition()
-            inspector?.refresh(display, x: position?.x ?? 0, y: position?.y ?? 0)
+            sidebar?.inspector.refresh(display, x: position?.x ?? 0, y: position?.y ?? 0)
         }
         mainView.onDisplayValuesChanged = { [weak inspector] display, x, y in
             inspector?.refresh(display, x: x, y: y)
@@ -54,18 +56,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         container.translatesAutoresizingMaskIntoConstraints = false
         mainView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(mainView)
-        container.addSubview(inspector)
+        container.addSubview(sidebar)
         container.addSubview(buttonStack)
 
         NSLayoutConstraint.activate([
             mainView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            mainView.trailingAnchor.constraint(equalTo: inspector.leadingAnchor),
+            mainView.trailingAnchor.constraint(equalTo: sidebar.leadingAnchor),
             mainView.topAnchor.constraint(equalTo: container.topAnchor),
             mainView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            inspector.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            inspector.topAnchor.constraint(equalTo: container.topAnchor),
-            inspector.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            inspector.widthAnchor.constraint(equalToConstant: 300),
+            sidebar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            sidebar.topAnchor.constraint(equalTo: container.topAnchor),
+            sidebar.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            sidebar.widthAnchor.constraint(equalToConstant: 300),
             buttonStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
             buttonStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12)
         ])
