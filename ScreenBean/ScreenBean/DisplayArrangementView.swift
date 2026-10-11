@@ -22,6 +22,11 @@ class DisplayArrangementView: NSView {
     var onDisplayValuesChanged: ((DisplayInfo?, CGFloat, CGFloat) -> Void)?
 
     private var physicalLayout = PhysicalLayout()
+
+    /// Photo or plan drawn as a layout reference, sized to the width of the arrangement.
+    var referenceImage: NSImage? { didSet { needsDisplay = true } }
+    /// Controls the reference image's opacity and whether it draws over the displays.
+    var referenceBlend = ReferenceImageBlend(value: 0) { didSet { needsDisplay = true } }
     // MARK: - Workspace Camera
     /// Number of view points used to represent one physical inch
     /// at the default zoom level.
@@ -186,6 +191,7 @@ class DisplayArrangementView: NSView {
         guard !physicalLayout.displays.isEmpty else {
             return
         }
+        if !referenceBlend.aboveDisplays { drawReferenceImage() }
         for display in physicalLayout.displays {
             let rect =
                 physicalRectToView(
@@ -198,8 +204,28 @@ class DisplayArrangementView: NSView {
                 isSelected: display.id == selectedDisplayID
             )
         }
+        if referenceBlend.aboveDisplays { drawReferenceImage() }
     }
-    
+
+    // MARK: - Reference Image
+    /// Draws the reference image, anchored to the arrangement's top-left corner
+    /// and scaled to the arrangement's width.
+    private func drawReferenceImage() {
+        guard let image = referenceImage,
+              referenceBlend.opacity > 0,
+              image.size.width > 0, image.size.height > 0,
+              physicalLayout.width > 0 else { return }
+        let width = physicalLayout.width
+        let height = width * image.size.height / image.size.width
+        let rect = CGRect(
+            x: physicalLayout.minX * pointsPerInch + viewOffset.x,
+            y: physicalLayout.minY * pointsPerInch + viewOffset.y,
+            width: width * pointsPerInch,
+            height: height * pointsPerInch
+        )
+        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: CGFloat(referenceBlend.opacity), respectFlipped: true, hints: nil)
+    }
+
     // MARK: - Grid
     private func drawGrid(
         in context: CGContext

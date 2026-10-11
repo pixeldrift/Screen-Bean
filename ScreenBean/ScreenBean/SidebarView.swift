@@ -24,7 +24,7 @@ final class SidebarView: NSView {
         var summary: String {
             switch self {
             case .referenceImage:
-                return "Import a photo of your display installation and align it behind the virtual displays."
+                return ""
             case .wallpaper:
                 return "Span one image across all displays and export a version for each screen."
             }
@@ -33,7 +33,11 @@ final class SidebarView: NSView {
 
     private let toolsContainer = NSView()
     private let tabs = NSSegmentedControl(labels: Tool.allCases.map(\.title), trackingMode: .selectOne, target: nil, action: nil)
-    private let panels: [Tool: ToolPlaceholderView] = Dictionary(uniqueKeysWithValues: Tool.allCases.map { ($0, ToolPlaceholderView(title: $0.title, summary: $0.summary)) })
+    let referenceImagePanel = ReferenceImagePanel()
+    private lazy var panels: [Tool: NSView] = [
+        .referenceImage: referenceImagePanel,
+        .wallpaper: ToolPlaceholderView(title: Tool.wallpaper.title, summary: Tool.wallpaper.summary)
+    ]
 
     override init(frame: NSRect) { super.init(frame: frame); build() }
     required init?(coder: NSCoder) { super.init(coder: coder); build() }

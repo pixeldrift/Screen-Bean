@@ -26,6 +26,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         let sidebar = SidebarView()
         let inspector = sidebar.inspector
+        sidebar.referenceImagePanel.onImageChanged = { [weak mainView] in mainView?.referenceImage = $0 }
+        sidebar.referenceImagePanel.onBlendChanged = { [weak mainView] in mainView?.referenceBlend = ReferenceImageBlend(value: $0) }
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         inspector.onChange = { nickname, width, height, x, y, color, uniform, top, bottom, left, right in
             mainView.updateSelectedDisplay(
