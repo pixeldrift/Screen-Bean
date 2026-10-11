@@ -690,7 +690,7 @@ class DisplayArrangementView: NSView {
 
     // MARK: - Hit Testing
     /// What is under `point`: a handle of the selected or hovered item, or an item's body.
-    private func hitTest(_ point: CGPoint) -> (target: EditTarget, handle: GrabHandle?)? {
+    private func itemHit(_ point: CGPoint) -> (target: EditTarget, handle: GrabHandle?)? {
         for target in [currentSelection, hoverTarget].compactMap({ $0 }) where isEditable(target) {
             if let physical = physicalOuterRect(of: target), let handle = handle(at: point, in: viewRect(forPhysical: physical)) {
                 return (target, handle)
@@ -702,9 +702,9 @@ class DisplayArrangementView: NSView {
         return nil
     }
 
-    /// Like `hitTest`, but forgiving enough to keep handles that hang outside an item's edge visible.
+    /// Like `itemHit`, but forgiving enough to keep handles that hang outside an item's edge visible.
     private func hoverTest(_ point: CGPoint) -> EditTarget? {
-        if let hit = hitTest(point) { return hit.target }
+        if let hit = itemHit(point) { return hit.target }
         let slop = cornerHandleRadius + 3
         return targetsFrontToBack().first { target in
             guard isEditable(target), let physical = physicalOuterRect(of: target) else { return false }
@@ -813,7 +813,7 @@ class DisplayArrangementView: NSView {
 
         // Clicking an item selects it and starts moving it, or resizing it from a handle.
         // Clicking empty workspace clears the selection and begins panning.
-        if let hit = hitTest(point) {
+        if let hit = itemHit(point) {
             select(hit.target)
             isPanning = false
             guard isEditable(hit.target), let start = physicalOuterRect(of: hit.target) else { return }
