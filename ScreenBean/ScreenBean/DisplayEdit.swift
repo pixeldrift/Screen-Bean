@@ -16,6 +16,7 @@ struct DisplayEdit {
     var y: Double?
     var color: NSColor?
     var uniformBezel: Bool?
+    var bezelUniform: Double?
     var bezelTop: Double?
     var bezelBottom: Double?
     var bezelLeft: Double?

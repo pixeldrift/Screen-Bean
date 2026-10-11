@@ -12,7 +12,9 @@ final class SidebarView: NSView {
     let inspector = DisplayInspectorView()
     let referenceImagePanel = ImageLayerPanel(title: "Reference Image", showsTransform: true)
     let wallpaperPanel = ImageLayerPanel(title: "Spanned Wallpaper", showsTransform: true, showsClipToggle: true)
-    let exportImagesButton = NSButton(title: "Export Images", target: nil, action: nil)
+    let settingsPanel = SettingsPanel()
+    let previewWallpaperButton = NSButton(title: "Preview Wallpaper", target: nil, action: nil)
+    let exportImagesButton = NSButton(title: "Export Slices", target: nil, action: nil)
     let applyWallpaperButton = NSButton(title: "Apply Wallpaper", target: nil, action: nil)
 
     private let toolsContainer = NSView()
@@ -30,14 +32,21 @@ final class SidebarView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
 
+        let topDivider = NSBox(); topDivider.boxType = .separator
         let divider = NSBox(); divider.boxType = .separator
-        let buttons = NSStackView(views: [exportImagesButton, applyWallpaperButton])
-        buttons.spacing = 8
+        // Preview ends on any click or key press, so it can't lock you out of the interface.
+        previewWallpaperButton.setButtonType(.pushOnPushOff)
+        previewWallpaperButton.bezelStyle = .rounded
+        previewWallpaperButton.toolTip = "Show the wallpaper across all real screens. Ends on any click or key press."
+        let exportRow = NSStackView(views: [exportImagesButton, applyWallpaperButton])
+        exportRow.spacing = 8
+        let buttons = NSStackView(views: [previewWallpaperButton, exportRow])
+        buttons.orientation = .vertical; buttons.alignment = .leading; buttons.spacing = 8
 
-        let stack = NSStackView(views: [referenceImagePanel, divider, wallpaperPanel, buttons])
+        let stack = NSStackView(views: [settingsPanel, topDivider, referenceImagePanel, divider, wallpaperPanel, buttons])
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 14
         stack.translatesAutoresizingMaskIntoConstraints = false
-        for v in [referenceImagePanel, divider, wallpaperPanel] { v.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        for v in [settingsPanel, topDivider, referenceImagePanel, divider, wallpaperPanel] { v.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
 
         // The tools are taller than a short window, so they scroll.
         let document = FlippedView()

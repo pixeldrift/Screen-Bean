@@ -22,6 +22,7 @@ struct DisplayConfiguration: Codable {
     var colorHex: String
     var isColorCustom: Bool
     var uniformBezel: Bool
+    var bezelUniform: Double
     var bezelTop: Double
     var bezelBottom: Double
     var bezelLeft: Double
@@ -42,6 +43,7 @@ struct DisplayConfiguration: Codable {
         colorHex: String = DisplayDefaults.colorHex,
         isColorCustom: Bool = false,
         uniformBezel: Bool = true,
+        bezelUniform: Double = DisplayDefaults.bezelInches,
         bezelTop: Double = DisplayDefaults.bezelInches,
         bezelBottom: Double = DisplayDefaults.bezelInches,
         bezelLeft: Double = DisplayDefaults.bezelInches,
@@ -61,6 +63,7 @@ struct DisplayConfiguration: Codable {
         self.colorHex = colorHex
         self.isColorCustom = isColorCustom
         self.uniformBezel = uniformBezel
+        self.bezelUniform = bezelUniform
         self.bezelTop = bezelTop
         self.bezelBottom = bezelBottom
         self.bezelLeft = bezelLeft
@@ -73,7 +76,7 @@ struct DisplayConfiguration: Codable {
     private enum CodingKeys: String, CodingKey {
         case persistentID, nickname, widthInches, heightInches
         case xInches, yInches, rotation, isCalibrated
-        case colorHex, isColorCustom, uniformBezel, bezelTop, bezelBottom, bezelLeft, bezelRight
+        case colorHex, isColorCustom, uniformBezel, bezelUniform, bezelTop, bezelBottom, bezelLeft, bezelRight
         case bezelColorHex, showBezel, isLocked
     }
 
@@ -92,6 +95,8 @@ struct DisplayConfiguration: Codable {
         isColorCustom = try values.decodeIfPresent(Bool.self, forKey: .isColorCustom) ?? (colorHex != DisplayDefaults.legacyColorHex)
         uniformBezel = try values.decodeIfPresent(Bool.self, forKey: .uniformBezel) ?? true
         bezelTop = try values.decodeIfPresent(Double.self, forKey: .bezelTop) ?? DisplayDefaults.bezelInches
+        // Earlier versions used the top value for a uniform bezel.
+        bezelUniform = try values.decodeIfPresent(Double.self, forKey: .bezelUniform) ?? bezelTop
         bezelBottom = try values.decodeIfPresent(Double.self, forKey: .bezelBottom) ?? DisplayDefaults.bezelInches
         bezelLeft = try values.decodeIfPresent(Double.self, forKey: .bezelLeft) ?? DisplayDefaults.bezelInches
         bezelRight = try values.decodeIfPresent(Double.self, forKey: .bezelRight) ?? DisplayDefaults.bezelInches

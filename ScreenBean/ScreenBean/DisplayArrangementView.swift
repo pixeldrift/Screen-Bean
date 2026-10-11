@@ -152,6 +152,19 @@ class DisplayArrangementView: NSView {
         addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil))
     }
 
+    private var settingsObservers: [NSObjectProtocol] = []
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // Redraw when settings that change how displays look are switched.
+        guard settingsObservers.isEmpty else { return }
+        for name in [BezelVisibility.didChange, MeasurementFormat.didChange] {
+            settingsObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.needsDisplay = true
+            })
+        }
+    }
+
     override func layout() {
         super.layout()
 
@@ -252,7 +265,7 @@ class DisplayArrangementView: NSView {
                 id: display.displayID, nickname: display.nickname,
                 persistentID: display.persistentID, colorHex: display.colorHex,
                 uniformBezel: display.uniformBezel,
-                bezelTop: CGFloat(display.bezelTop), bezelBottom: CGFloat(display.bezelBottom),
+                bezelUniform: CGFloat(display.bezelUniform), bezelTop: CGFloat(display.bezelTop), bezelBottom: CGFloat(display.bezelBottom),
                 bezelLeft: CGFloat(display.bezelLeft), bezelRight: CGFloat(display.bezelRight),
                 bezelColorHex: display.bezelColorHex, showBezel: display.showBezel, isLocked: display.isLocked,
                 x: originX,
@@ -358,15 +371,32 @@ class DisplayArrangementView: NSView {
 
     private func drawImageLayer(_ slot: ImageLayerSlot) {
         let current = layer(slot)
-        guard let image = current.image, current.blend.opacity > 0, let physical = physicalRect(of: current) else { return }
-        NSGraphicsContext.saveGraphicsState()
-        if slot == .wallpaper && wallpaperClipsToDisplays {
-            let clip = NSBezierPath()
-            for display in physicalLayout.displays { clip.appendRect(physicalRectToView(display)) }
-            clip.addClip()
+        guard let image = current.image, let physical = physicalRect(of: current) else { return }
+        let target = viewRect(forPhysical: physical)
+        func drawImage(opacity: CGFloat) {
+            image.draw(in: target, from: .zero, operation: .sourceOver, fraction: opacity, respectFlipped: true, hints: nil)
         }
-        image.draw(in: viewRect(forPhysical: physical), from: .zero, operation: .sourceOver, fraction: CGFloat(current.blend.opacity), respectFlipped: true, hints: nil)
-        NSGraphicsContext.restoreGraphicsState()
+
+        if slot == .wallpaper && wallpaperClipsToDisplays {
+            // Full strength on the displays; the slider's opacity everywhere else.
+            let screens = NSBezierPath()
+            for display in physicalLayout.displays { screens.appendRect(physicalRectToView(display)) }
+            if current.blend.opacity > 0 {
+                NSGraphicsContext.saveGraphicsState()
+                let outside = NSBezierPath(rect: bounds)
+                outside.append(screens)
+                outside.windingRule = .evenOdd
+                outside.addClip()
+                drawImage(opacity: CGFloat(current.blend.opacity))
+                NSGraphicsContext.restoreGraphicsState()
+            }
+            NSGraphicsContext.saveGraphicsState()
+            screens.addClip()
+            drawImage(opacity: 1)
+            NSGraphicsContext.restoreGraphicsState()
+        } else if current.blend.opacity > 0 {
+            drawImage(opacity: CGFloat(current.blend.opacity))
+        }
     }
 
     // MARK: - Grid
@@ -515,7 +545,7 @@ class DisplayArrangementView: NSView {
         context.restoreGState()
 
         // Bezel frame: a soft top-to-bottom gradient with a raised bevel edge.
-        if display.showBezel, let frameGradient = CGGradient(
+        if BezelVisibility.isShown(displaySetting: display.showBezel), let frameGradient = CGGradient(
             colorsSpace: CGColorSpaceCreateDeviceRGB(),
             colors: [(bezelColor.blended(withFraction: 0.13, of: .white) ?? bezelColor).cgColor, (bezelColor.blended(withFraction: 0.31, of: .black) ?? bezelColor).cgColor] as CFArray,
             locations: [0, 1]
@@ -687,10 +717,12 @@ class DisplayArrangementView: NSView {
 
     /// Bezel thickness on each side of a display, in inches.
     private func bezelInsets(_ display: PhysicalLayout.Display) -> (top: CGFloat, bottom: CGFloat, left: CGFloat, right: CGFloat) {
-        guard display.showBezel else { return (0, 0, 0, 0) }
-        let top = max(0, display.bezelTop)
-        guard !display.uniformBezel else { return (top, top, top, top) }
-        return (top, max(0, display.bezelBottom), max(0, display.bezelLeft), max(0, display.bezelRight))
+        guard BezelVisibility.isShown(displaySetting: display.showBezel) else { return (0, 0, 0, 0) }
+        if display.uniformBezel {
+            let all = max(0, display.bezelUniform)
+            return (all, all, all, all)
+        }
+        return (max(0, display.bezelTop), max(0, display.bezelBottom), max(0, display.bezelLeft), max(0, display.bezelRight))
     }
 
     /// A display's footprint including its bezel, in physical inches.
@@ -723,10 +755,13 @@ class DisplayArrangementView: NSView {
     /// Targets from front to back, following the reference image's layer setting.
     private func targetsFrontToBack() -> [EditTarget] {
         let displayTargets = physicalLayout.displays.reversed().map { EditTarget.display($0.id) }
-        func isShown(_ slot: ImageLayerSlot) -> Bool { layer(slot).image != nil && layer(slot).blend.opacity > 0 }
+        // Displays always win a click over an image, whatever the stacking; images follow in layer order.
+        func isShown(_ slot: ImageLayerSlot) -> Bool {
+            layer(slot).image != nil && (layer(slot).blend.opacity > 0 || (slot == .wallpaper && wallpaperClipsToDisplays))
+        }
         let front = imageSlots.reversed().filter { isShown($0) && drawsAboveDisplays($0) }.map { EditTarget.image($0) }
         let back = imageSlots.reversed().filter { isShown($0) && !drawsAboveDisplays($0) }.map { EditTarget.image($0) }
-        return front + displayTargets + back
+        return displayTargets + front + back
     }
 
     // MARK: - Grab Handles
@@ -1101,6 +1136,7 @@ class DisplayArrangementView: NSView {
         if let color = edit.color { displays[i].isColorCustom = true; displays[i].colorHex = color.displayHex; physicalLayout.displays[j].colorHex = color.displayHex }
         if let bezelColor = edit.bezelColor { displays[i].bezelColorHex = bezelColor.displayHex; physicalLayout.displays[j].bezelColorHex = bezelColor.displayHex }
         if let uniformBezel = edit.uniformBezel { displays[i].uniformBezel = uniformBezel; physicalLayout.displays[j].uniformBezel = uniformBezel }
+        if let bezelUniform = edit.bezelUniform { displays[i].bezelUniform = bezelUniform; physicalLayout.displays[j].bezelUniform = CGFloat(bezelUniform) }
         if let bezelTop = edit.bezelTop { displays[i].bezelTop = bezelTop; physicalLayout.displays[j].bezelTop = CGFloat(bezelTop) }
         if let bezelBottom = edit.bezelBottom { displays[i].bezelBottom = bezelBottom; physicalLayout.displays[j].bezelBottom = CGFloat(bezelBottom) }
         if let bezelLeft = edit.bezelLeft { displays[i].bezelLeft = bezelLeft; physicalLayout.displays[j].bezelLeft = CGFloat(bezelLeft) }

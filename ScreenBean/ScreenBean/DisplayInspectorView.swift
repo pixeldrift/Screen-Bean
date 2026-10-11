@@ -5,6 +5,15 @@ final class FlippedView: NSView {
     override var isFlipped: Bool { true }
 }
 
+/// Sizes the sidebar and its input columns share.
+enum SidebarMetrics {
+    static let width: CGFloat = 270
+    static let inspectorInset: CGFloat = 16
+    static let columnSpacing: CGFloat = 16
+    /// Width of one of the two input columns, so every input box is the same size.
+    static var columnWidth: CGFloat { (width - inspectorInset * 2 - columnSpacing) / 2 }
+}
+
 final class DisplayInspectorView: NSView {
     var onChange: ((DisplayEdit) -> Void)?
 
@@ -25,7 +34,7 @@ final class DisplayInspectorView: NSView {
     private let displayColor = ColorSwatchButton()
     private let bezelColor = ColorSwatchButton()
     private let showBezel = NSButton(checkboxWithTitle: "Show bezel", target: nil, action: nil)
-    private let fractionsCheckbox = NSButton(checkboxWithTitle: "Fractions", target: nil, action: nil)
+    private var sizeCaption: NSView!
     private let resolution = NSTextField(labelWithString: "—")
     private let ppi = NSTextField(labelWithString: "—")
     private let role = NSTextField(labelWithString: "—")
@@ -34,7 +43,6 @@ final class DisplayInspectorView: NSView {
     private var hasDisplay = false
     private var uniformSection: NSView!
     private var individualSection: NSView!
-    private var showsBezel = true
 
     override init(frame: NSRect) { super.init(frame: frame); build() }
     required init?(coder: NSCoder) { super.init(coder: coder); build() }
@@ -81,44 +89,47 @@ final class DisplayInspectorView: NSView {
         displayColor.onChange = { [weak self] in self?.emit(DisplayEdit(color: $0)) }
         bezelColor.onChange = { [weak self] in self?.emit(DisplayEdit(bezelColor: $0)) }
         detected.font = .systemFont(ofSize: 10)
+        // Long names must not widen the panel and push the name field off the edge.
+        for label in [detected, resolution, ppi, role, orientation] {
+            label.lineBreakMode = .byTruncatingTail
+            label.maximumNumberOfLines = 1
+            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
+        nickname.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        NotificationCenter.default.addObserver(forName: BezelVisibility.didChange, object: nil, queue: .main) { [weak self] _ in self?.applyEnabled() }
 
         // Sections.
         let infoSection = stack([
             grid(valueCell("Native Resolution", resolution), valueCell("Pixel Density", ppi)),
             grid(valueCell("Display Role", role), valueCell("Orientation", orientation))
         ], spacing: 8)
-        fractionsCheckbox.target = self; fractionsCheckbox.action = #selector(fractionsToggled)
-        fractionsCheckbox.toolTip = "Show measurements as fractions of an inch (nearest 16th). Fractions like 23 1/8 can always be typed."
-        fractionsCheckbox.state = MeasurementFormat.useFractions ? .on : .off
-        NotificationCenter.default.addObserver(forName: MeasurementFormat.didChange, object: nil, queue: .main) { [weak self] _ in
-            self?.fractionsCheckbox.state = MeasurementFormat.useFractions ? .on : .off
-        }
-        let dimensionsHeader = NSStackView(views: [sectionTitle("Dimensions & Position"), NSView(), fractionsCheckbox])
-        dimensionsHeader.distribution = .fill
-        let dimensions = stack([dimensionsHeader] + [
+        let dimensions = section("Dimensions & Position", [
             grid(cell("Width", "inches", width), cell("Height", "inches", height)),
             grid(cell("X-Pos", "inches", x), cell("Y-Pos", "inches", y))
-        ], spacing: 8)
+        ])
 
         // Bezel: a size caption with the Uniform toggle, then either one field and a slider
         // or a cross of four sides, then colors and visibility.
-        let sizeCaption = ScrubLabel("Bezel Size", unit: "inches", input: bezel)
-        let sizeHeader = NSStackView(views: [sizeCaption, NSView(), uniform])
+        let caption = ScrubLabel("Bezel Size", unit: "inches", input: bezel)
+        sizeCaption = caption
+        let sizeHeader = NSStackView(views: [caption, NSView(), uniform])
         sizeHeader.distribution = .fill
+        uniform.setContentCompressionResistancePriority(.required, for: .horizontal)
+        uniform.setContentHuggingPriority(.required, for: .horizontal)
         uniformSection = slider
-        // Side inputs are as wide as one column of the two-column grids above.
-        let columnWidth: CGFloat = 126
+        // Every side input is as wide as the other input boxes.
         func sideCell(_ name: String, _ input: NumberInput) -> NSView {
             let c = input.labeled(name, centered: true)
-            c.widthAnchor.constraint(equalToConstant: columnWidth).isActive = true
+            c.widthAnchor.constraint(equalToConstant: SidebarMetrics.columnWidth).isActive = true
             return c
         }
         let middle = NSStackView(views: [sideCell("Left", left), sideCell("Right", right)])
-        middle.spacing = 16
+        middle.spacing = SidebarMetrics.columnSpacing
         let cross = NSStackView(views: [sideCell("Top", top), middle, sideCell("Bottom", bottom)])
         cross.orientation = .vertical; cross.alignment = .centerX; cross.spacing = 6
         individualSection = cross
-        bezel.widthAnchor.constraint(equalToConstant: columnWidth).isActive = true
+        bezel.widthAnchor.constraint(equalToConstant: SidebarMetrics.columnWidth).isActive = true
         let bezelRow = NSStackView(views: [bezel, NSView()])
         bezelRow.distribution = .fill
         let bezelSection = stack([sectionTitle("Bezel"), sizeHeader, bezelRow, uniformSection, individualSection, colorRow("Bezel Color", bezelColor), showBezel], spacing: 8)
@@ -131,8 +142,8 @@ final class DisplayInspectorView: NSView {
         document.translatesAutoresizingMaskIntoConstraints = false
         document.addSubview(content)
         NSLayoutConstraint.activate([
-            content.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 16),
-            content.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -16),
+            content.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: SidebarMetrics.inspectorInset),
+            content.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -SidebarMetrics.inspectorInset),
             content.topAnchor.constraint(equalTo: document.topAnchor, constant: 18),
             content.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -18)
         ])
@@ -172,7 +183,15 @@ final class DisplayInspectorView: NSView {
     }
     private func divider() -> NSBox { let b = NSBox(); b.boxType = .separator; return b }
     private func cell(_ label: String, _ unit: String?, _ input: NumberInput) -> NSView { input.labeled(label, unit: unit) }
-    private func grid(_ a: NSView, _ b: NSView) -> NSStackView { twoColumnGrid(a, b) }
+    /// Two inputs side by side, each exactly one column wide, so rows line up like a grid.
+    private func grid(_ a: NSView, _ b: NSView) -> NSStackView {
+        for v in [a, b] { v.widthAnchor.constraint(equalToConstant: SidebarMetrics.columnWidth).isActive = true }
+        let row = NSStackView(views: [a, b])
+        row.spacing = SidebarMetrics.columnSpacing
+        row.alignment = .top
+        row.distribution = .fill
+        return row
+    }
     private func valueCell(_ label: String, _ value: NSTextField) -> NSView {
         let l = NSTextField(labelWithString: label); l.font = .systemFont(ofSize: 11)
         value.font = .systemFont(ofSize: 12); value.textColor = .secondaryLabelColor
@@ -203,15 +222,13 @@ final class DisplayInspectorView: NSView {
         width.value = d.physicalWidthInches; height.value = d.physicalHeightInches
         x.value = Double(px); y.value = Double(py)
         uniform.state = d.uniformBezel ? .on : .off
-        let b = d.uniformBezel ? d.bezelTop : (d.bezelTop + d.bezelBottom + d.bezelLeft + d.bezelRight) / 4
-        bezel.value = b; slider.doubleValue = b
+        bezel.value = d.bezelUniform; slider.doubleValue = d.bezelUniform
         top.value = d.bezelTop; bottom.value = d.bezelBottom
         left.value = d.bezelLeft; right.value = d.bezelRight
-        bezel.superview?.isHidden = !d.uniformBezel; uniformSection.isHidden = !d.uniformBezel; individualSection.isHidden = d.uniformBezel
+        sizeCaption.isHidden = !d.uniformBezel; bezel.superview?.isHidden = !d.uniformBezel; uniformSection.isHidden = !d.uniformBezel; individualSection.isHidden = d.uniformBezel
         displayColor.setColor(NSColor(displayHex: d.colorHex))
         bezelColor.setColor(NSColor(displayHex: d.bezelColorHex))
         showBezel.state = d.showBezel ? .on : .off
-        showsBezel = d.showBezel
         resolution.stringValue = "\(d.pixelWidth) × \(d.pixelHeight) pixels"; ppi.stringValue = String(format: "%.0f PPI", d.ppi)
         role.stringValue = d.isPrimary ? "Primary display" : "Secondary display"
         orientation.stringValue = d.isPortrait ? "Portrait (rotated \(d.rotationDegrees)°)" : (d.rotationDegrees == 0 ? "Landscape" : "Landscape (rotated \(d.rotationDegrees)°)")
@@ -222,14 +239,15 @@ final class DisplayInspectorView: NSView {
     /// Everything except the lock is read-only while the display is locked or nothing is selected.
     private func applyEnabled() {
         let editable = hasDisplay && !isLocked
-        for input in [width, height, x, y] { input.isEnabled = editable }
-        // The uniform field is read-only while individual sides are shown.
-        let bezelEditable = editable && showsBezel
-        for input in [top, bottom, left, right] { input.isEnabled = bezelEditable }
-        bezel.isEnabled = bezelEditable && uniform.state == .on
-        nickname.isEnabled = editable; showBezel.isEnabled = editable
-        uniform.isEnabled = bezelEditable; slider.isEnabled = bezelEditable
-        bezelColor.isEnabled = bezelEditable; displayColor.isEnabled = editable
+        for input in [width, height, x, y, top, bottom, left, right] { input.isEnabled = editable }
+        // The single size is hidden, not just disabled, while individual sides are shown.
+        bezel.isEnabled = editable
+        nickname.isEnabled = editable; uniform.isEnabled = editable; slider.isEnabled = editable
+        bezelColor.isEnabled = editable; displayColor.isEnabled = editable
+        // Settings can force every bezel on or off, which takes this display's own switch out of play.
+        let overridden = BezelVisibility.current != .perDisplay
+        showBezel.isEnabled = editable && !overridden
+        showBezel.toolTip = overridden ? "All bezels are currently forced \(BezelVisibility.current == .showAll ? "on" : "off") in Settings." : nil
         lockButton.isEnabled = hasDisplay
     }
 
@@ -243,14 +261,18 @@ final class DisplayInspectorView: NSView {
     // MARK: - Actions
 
     private func emit(_ edit: DisplayEdit) { onChange?(edit) }
-    @objc private func fractionsToggled() { MeasurementFormat.useFractions = fractionsCheckbox.state == .on }
     @objc private func lockToggled() { emit(DisplayEdit(isLocked: !isLocked)) }
     @objc private func nameChanged() { emit(DisplayEdit(nickname: nickname.stringValue)) }
     @objc private func uniformChanged() { emit(DisplayEdit(uniformBezel: uniform.state == .on)) }
     @objc private func showBezelChanged() { emit(DisplayEdit(showBezel: showBezel.state == .on)) }
-    @objc private func sliderChanged() { setUniformBezel(slider.doubleValue) }
+    @objc private func sliderChanged() {
+        // A detent at zero makes it easy to land on no bezel.
+        if abs(slider.doubleValue) < 0.04 { slider.doubleValue = 0 }
+        setUniformBezel(slider.doubleValue)
+    }
+    /// Sets the uniform size only; the four individual sides are kept for when Uniform is switched off.
     private func setUniformBezel(_ v: Double) {
         bezel.value = v; slider.doubleValue = v
-        emit(DisplayEdit(uniformBezel: true, bezelTop: v, bezelBottom: v, bezelLeft: v, bezelRight: v))
+        emit(DisplayEdit(bezelUniform: v))
     }
 }

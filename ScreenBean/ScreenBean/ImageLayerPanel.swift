@@ -239,6 +239,8 @@ final class ImageLayerPanel: NSView {
     @objc private func clipToggled() { onClipChanged?(clipCheckbox.state == .on) }
 
     @objc private func sliderChanged() {
+        // A detent at zero (invisible) makes it easy to land on.
+        if abs(slider.doubleValue) < 0.04 { slider.doubleValue = 0 }
         updateReadout()
         onBlendChanged?(slider.doubleValue)
     }

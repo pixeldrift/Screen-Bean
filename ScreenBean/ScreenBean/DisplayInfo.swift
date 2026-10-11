@@ -51,6 +51,9 @@ struct DisplayInfo {
     /// True once the user has picked this display's color; otherwise it follows the palette.
     var isColorCustom: Bool = false
     var uniformBezel: Bool = true
+    /// Bezel thickness on every side when Uniform is on. Kept apart from the four sides below,
+    /// so switching Uniform on and off doesn't lose the individual values.
+    var bezelUniform: Double = DisplayDefaults.bezelInches
     var bezelTop: Double = DisplayDefaults.bezelInches
     var bezelBottom: Double = DisplayDefaults.bezelInches
     var bezelLeft: Double = DisplayDefaults.bezelInches
@@ -258,6 +261,7 @@ struct DisplayInfo {
             colorHex: colorHex,
             isColorCustom: isColorCustom,
             uniformBezel: uniformBezel,
+            bezelUniform: bezelUniform,
             bezelTop: bezelTop,
             bezelBottom: bezelBottom,
             bezelLeft: bezelLeft,
@@ -285,6 +289,7 @@ struct DisplayInfo {
         colorHex = configuration.colorHex
         isColorCustom = configuration.isColorCustom
         uniformBezel = configuration.uniformBezel
+        bezelUniform = configuration.bezelUniform
         bezelTop = configuration.bezelTop
         bezelBottom = configuration.bezelBottom
         bezelLeft = configuration.bezelLeft

@@ -25,6 +25,7 @@ struct PhysicalLayout {
         var persistentID: String = ""
         var colorHex: String = DisplayDefaults.colorHex
         var uniformBezel: Bool = true
+        var bezelUniform: CGFloat = CGFloat(DisplayDefaults.bezelInches)
         var bezelTop: CGFloat = CGFloat(DisplayDefaults.bezelInches)
         var bezelBottom: CGFloat = CGFloat(DisplayDefaults.bezelInches)
         var bezelLeft: CGFloat = CGFloat(DisplayDefaults.bezelInches)

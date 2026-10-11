@@ -11,9 +11,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
     private var mainView: DisplayArrangementView?
     private let overlays = DisplayOverlayManager()
-    private let identifyButton = NSButton(title: "Identify Displays", target: nil, action: nil)
-    private let previewButton = NSButton(title: "Preview Wallpaper", target: nil, action: nil)
-    private let excludePrimaryCheckbox = NSButton(checkboxWithTitle: "Exclude primary", target: nil, action: nil)
+    private var sidebarView: SidebarView!
+    private var identifyButton: NSButton { sidebarView.settingsPanel.identifyButton }
+    private var previewButton: NSButton { sidebarView.previewWallpaperButton }
+    private var excludePrimaryCheckbox: NSButton { sidebarView.settingsPanel.excludePrimaryCheckbox }
     private static let excludePrimaryKey = "ScreenBean.ExcludePrimaryFromIdentify"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -120,36 +121,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsButton = NSButton(title: "Display Settings…", target: self, action: #selector(openDisplaySettings))
         refreshButton.bezelStyle = .rounded
         settingsButton.bezelStyle = .rounded
-        // Identify mode stays on, even while you click around, until the button is switched off.
-        identifyButton.setButtonType(.pushOnPushOff)
-        identifyButton.bezelStyle = .rounded
+        let systemButtonStack = NSStackView(views: [refreshButton, settingsButton])
+        systemButtonStack.orientation = .horizontal
+        systemButtonStack.spacing = 8
+        systemButtonStack.translatesAutoresizingMaskIntoConstraints = false
+
+        // Identify and preview are modes that end on any click or key press.
+        sidebarView = sidebar
         identifyButton.target = self; identifyButton.action = #selector(identifyToggled)
-        identifyButton.toolTip = "Fill each real screen with its letter, name and size. Ends on any click or key press."
-        previewButton.setButtonType(.pushOnPushOff)
-        previewButton.bezelStyle = .rounded
         previewButton.target = self; previewButton.action = #selector(previewToggled)
-        previewButton.toolTip = "Show the wallpaper across all real screens. Ends on any click or key press."
         overlays.clickThroughViews = [identifyButton, previewButton]
         overlays.onModesStopped = { [weak self] in
             self?.identifyButton.state = .off
             self?.previewButton.state = .off
         }
         excludePrimaryCheckbox.target = self; excludePrimaryCheckbox.action = #selector(excludePrimaryToggled)
-        excludePrimaryCheckbox.toolTip = "Leave the primary display clear while identifying."
         let excluded = UserDefaults.standard.bool(forKey: Self.excludePrimaryKey)
         excludePrimaryCheckbox.state = excluded ? .on : .off
         overlays.excludePrimary = excluded
-        let identifyRow = NSStackView(views: [excludePrimaryCheckbox, identifyButton, previewButton])
-        identifyRow.orientation = .horizontal
-        identifyRow.spacing = 12
-        let systemRow = NSStackView(views: [refreshButton, settingsButton])
-        systemRow.orientation = .horizontal
-        systemRow.spacing = 8
-        let systemButtonStack = NSStackView(views: [identifyRow, systemRow])
-        systemButtonStack.orientation = .vertical
-        systemButtonStack.alignment = .trailing
-        systemButtonStack.spacing = 8
-        systemButtonStack.translatesAutoresizingMaskIntoConstraints = false
         self.mainView = mainView
         sidebar.exportImagesButton.target = self
         sidebar.exportImagesButton.action = #selector(exportWallpaperImages)
@@ -172,7 +161,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             sidebar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             sidebar.topAnchor.constraint(equalTo: container.topAnchor),
             sidebar.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            sidebar.widthAnchor.constraint(equalToConstant: 300),
+            sidebar.widthAnchor.constraint(equalToConstant: SidebarMetrics.width),
             buttonStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
             buttonStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
             systemButtonStack.trailingAnchor.constraint(equalTo: mainView.trailingAnchor, constant: -12),

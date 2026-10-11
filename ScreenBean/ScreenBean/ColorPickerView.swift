@@ -152,22 +152,24 @@ final class ColorPickerView: NSView {
     }
 }
 
-/// A swatch-and-chevron button that opens a `ColorPickerView` in a popover.
+/// A color swatch that opens a `ColorPickerView` in a popover when clicked.
 final class ColorSwatchButton: NSButton {
     var onChange: ((NSColor) -> Void)?
     private(set) var color: NSColor = .systemTeal
     private let picker = ColorPickerView()
     private let popover = NSPopover()
 
+    override var isEnabled: Bool { didSet { needsDisplay = true } }
+
     override init(frame: NSRect) { super.init(frame: frame); build() }
     required init?(coder: NSCoder) { super.init(coder: coder); build() }
 
     private func build() {
         title = ""
-        bezelStyle = .rounded
+        isBordered = false
+        image = nil
         target = self; action = #selector(showPicker)
-        imagePosition = .imageTrailing
-        image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: "Choose color")
+        setAccessibilityLabel("Choose color")
         picker.frame = NSRect(x: 0, y: 0, width: 260, height: 180)
         picker.onChange = { [weak self] color in
             self?.setColor(color)
@@ -187,6 +189,7 @@ final class ColorSwatchButton: NSButton {
         popover.contentViewController = controller
         popover.behavior = .transient
         widthAnchor.constraint(equalToConstant: 72).isActive = true
+        heightAnchor.constraint(equalToConstant: 24).isActive = true
     }
 
     /// Updates the swatch (and the open picker) without notifying `onChange`.
@@ -197,13 +200,14 @@ final class ColorSwatchButton: NSButton {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        // Paint the swatch inside the button, leaving room for the chevron.
-        let swatch = NSRect(x: bounds.minX + 8, y: bounds.minY + 5, width: bounds.width - 34, height: bounds.height - 10)
-        color.setFill()
-        NSBezierPath(roundedRect: swatch, xRadius: 3, yRadius: 3).fill()
+        // The whole button is the swatch.
+        let swatch = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = NSBezierPath(roundedRect: swatch, xRadius: 5, yRadius: 5)
+        (isEnabled ? color : color.withAlphaComponent(0.5)).setFill()
+        path.fill()
         NSColor.separatorColor.setStroke()
-        NSBezierPath(roundedRect: swatch, xRadius: 3, yRadius: 3).stroke()
+        path.lineWidth = 1
+        path.stroke()
     }
 
     @objc private func showPicker() {
