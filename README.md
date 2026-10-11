@@ -499,6 +499,8 @@ The sidebar for editing the selected display: nickname, physical size, position,
 * [ ]	Virtual displays stay in the layout while disconnected, with a corner icon showing whether each is connected or virtual
 * [ ]	Assign a virtual display to a physical display later
 * [ ]	Displays sidebar panel listing every display: collapsed by default with an icon to toggle it, List and Thumbnail views, minimal details for each
+* [ ]	Layout presets: save the whole setup (display positions, sizes, bezels, colors, locks, guides, images) under a name, such as Work or Home, and switch between them
+* [ ]	Presets remember which displays were connected and suggest the matching preset when the connected displays change
 * [x]	Colored border on the real display when its virtual display is selected
 * [x]	Identify displays on the real screens (stays on; optionally excluding the primary)
 * [ ]	Display calibration UI
