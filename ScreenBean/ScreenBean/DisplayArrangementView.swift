@@ -1127,4 +1127,11 @@ class DisplayArrangementView: NSView {
         let anchor = bounds.contains(location) ? location : CGPoint(x: bounds.midX, y: bounds.midY)
         setZoom(zoom * exp(CGFloat(event.scrollingDeltaY) * 0.01), keeping: anchor)
     }
+
+    /// Trackpad pinch: zoom around the point between the fingers.
+    override func magnify(with event: NSEvent) {
+        let location = convert(event.locationInWindow, from: nil)
+        let anchor = bounds.contains(location) ? location : CGPoint(x: bounds.midX, y: bounds.midY)
+        setZoom(zoom * (1 + event.magnification), keeping: anchor)
+    }
 }
