@@ -65,6 +65,11 @@ struct DisplayInfo {
 
     /// A planned display that isn't connected. It has no screen to draw on or set a wallpaper for.
     var isVirtual: Bool = false
+    /// When on, this display stays in the layout as a stand-in while it is unplugged.
+    var keepWhenDisconnected: Bool = false
+    /// A stand-in for a display that was connected before: virtual on screen, but it keeps that display's identity
+    /// and takes over again when the display is plugged back in.
+    var isRemembered: Bool { isVirtual && !persistentID.hasPrefix(VirtualDisplayStore.idPrefix) }
 
     var aspectRatio: Double {
         Double(pixelWidth) / Double(pixelHeight)
@@ -188,6 +193,17 @@ struct DisplayInfo {
             infos.append(virtual)
         }
 
+        // Displays marked to stay, which aren't plugged in, stand in as virtual ones.
+        let connectedIDs = Set(infos.map(\.persistentID))
+        let remembered = DisplayConfigurationStore.shared.loadAll().values
+            .filter { $0.keepWhenDisconnected && !$0.isVirtual && !connectedIDs.contains($0.persistentID) }
+            .sorted { $0.persistentID < $1.persistentID }
+        for configuration in remembered {
+            var stand = DisplayInfo(virtual: configuration)
+            if !stand.isColorCustom { stand.colorHex = DisplayDefaults.paletteColor(at: infos.count) }
+            infos.append(stand)
+        }
+
         return infos
     }
 
@@ -278,9 +294,10 @@ struct DisplayInfo {
             bezelColorHex: bezelColorHex,
             showBezel: showBezel,
             isLocked: isLocked,
-            isVirtual: isVirtual,
+            isVirtual: isVirtual && !isRemembered,
             pixelWidth: pixelWidth,
-            pixelHeight: pixelHeight
+            pixelHeight: pixelHeight,
+            keepWhenDisconnected: keepWhenDisconnected
         )
     }
 
@@ -309,6 +326,7 @@ struct DisplayInfo {
         bezelColorHex = configuration.bezelColorHex
         showBezel = configuration.showBezel
         isLocked = configuration.isLocked
+        keepWhenDisconnected = configuration.keepWhenDisconnected
     }
 }
 

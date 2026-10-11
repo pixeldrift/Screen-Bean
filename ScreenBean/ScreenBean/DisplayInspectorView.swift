@@ -46,6 +46,9 @@ final class DisplayInspectorView: NSView {
     private let orientation = NSTextField(labelWithString: "—")
     private let assignMenu = NSPopUpButton(title: "", target: nil, action: nil)
     private let deleteVirtualButton = NSButton(title: "Delete Virtual Display", target: nil, action: nil)
+    private let keepCheckbox = NSButton(checkboxWithTitle: "Keep when disconnected", target: nil, action: nil)
+    private var connectionSection: NSView!
+    private let virtualNote = NSTextField(wrappingLabelWithString: "")
     private var virtualSection: NSView!
     private var isLocked = false
     private var hasDisplay = false
@@ -148,12 +151,16 @@ final class DisplayInspectorView: NSView {
         assignMenu.target = self; assignMenu.action = #selector(assignChosen)
         deleteVirtualButton.bezelStyle = .rounded
         deleteVirtualButton.target = self; deleteVirtualButton.action = #selector(deleteVirtualTapped)
-        let virtualNote = NSTextField(wrappingLabelWithString: "Not connected. Assign it to a connected display to move this place, size and look onto it.")
         virtualNote.font = .systemFont(ofSize: 11); virtualNote.textColor = .secondaryLabelColor
+        keepCheckbox.target = self; keepCheckbox.action = #selector(keepChanged)
+        let keepNote = NSTextField(wrappingLabelWithString: "Leaves a stand-in in the layout when this display is unplugged, and takes over again when it returns.")
+        keepNote.font = .systemFont(ofSize: 11); keepNote.textColor = .secondaryLabelColor
+        connectionSection = stack([divider(), section("Connection", [keepCheckbox, keepNote])], spacing: 12)
         virtualSection = stack([divider(), section("Virtual Display", [virtualNote, assignMenu, deleteVirtualButton])], spacing: 12)
         virtualSection.isHidden = true
+        connectionSection.isHidden = true
 
-        let content = stack([header, stack([nickname, detected], spacing: 4), infoSection, divider(), dimensions, divider(), bezelSection, divider(), appearance, virtualSection], spacing: 12)
+        let content = stack([header, stack([nickname, detected], spacing: 4), infoSection, divider(), dimensions, divider(), bezelSection, divider(), appearance, connectionSection, virtualSection], spacing: 12)
         content.translatesAutoresizingMaskIntoConstraints = false
 
         let document = FlippedView()
@@ -227,6 +234,7 @@ final class DisplayInspectorView: NSView {
         guard let d else {
             hasDisplay = false
             virtualSection.isHidden = true
+            connectionSection.isHidden = true
             nickname.stringValue = ""; detected.stringValue = ""
             for input in [width, height, x, y, bezel, top, bottom, left, right] { input.clear() }
             resolution.stringValue = "—"; ppi.stringValue = "—"; role.stringValue = "—"; orientation.stringValue = "—"
@@ -237,7 +245,7 @@ final class DisplayInspectorView: NSView {
         hasDisplay = true
         isLocked = d.isLocked
         if nickname.currentEditor() == nil { nickname.stringValue = d.nickname }
-        detected.stringValue = d.isVirtual ? "(virtual display)" : "(" + DisplayInfo.displayName(for: d.displayID) + ")"
+        detected.stringValue = d.isRemembered ? "(disconnected)" : d.isVirtual ? "(virtual display)" : "(" + DisplayInfo.displayName(for: d.displayID) + ")"
         width.value = d.physicalWidthInches; height.value = d.physicalHeightInches
         x.value = Double(px); y.value = Double(py)
         uniform.state = d.uniformBezel ? .on : .off
@@ -249,8 +257,14 @@ final class DisplayInspectorView: NSView {
         bezelColor.setColor(NSColor(displayHex: d.bezelColorHex))
         showBezel.state = d.showBezel ? .on : .off
         resolution.stringValue = "\(d.pixelWidth) × \(d.pixelHeight) pixels"; ppi.stringValue = String(format: "%.0f PPI", d.ppi)
-        role.stringValue = d.isVirtual ? "Virtual display" : (d.isPrimary ? "Primary display" : "Secondary display")
+        role.stringValue = d.isRemembered ? "Disconnected display" : d.isVirtual ? "Virtual display" : (d.isPrimary ? "Primary display" : "Secondary display")
         virtualSection.isHidden = !d.isVirtual
+        connectionSection.isHidden = d.isVirtual
+        keepCheckbox.state = d.keepWhenDisconnected ? .on : .off
+        virtualNote.stringValue = d.isRemembered
+            ? "This display isn't connected. It takes this place again when plugged back in. Assign to move it onto a different display."
+            : "Not connected. Assign it to a connected display to move this place, size and look onto it."
+        deleteVirtualButton.title = d.isRemembered ? "Forget Display" : "Delete Virtual Display"
         if d.isVirtual { rebuildAssignMenu() }
         orientation.stringValue = d.isPortrait ? "Portrait (rotated \(d.rotationDegrees)°)" : (d.rotationDegrees == 0 ? "Landscape" : "Landscape (rotated \(d.rotationDegrees)°)")
         if d.mirrorsDisplayID != 0 { role.stringValue += ", mirroring \(DisplayInfo.displayName(for: d.mirrorsDisplayID))" }
@@ -271,6 +285,7 @@ final class DisplayInspectorView: NSView {
         showBezel.toolTip = overridden ? "All bezels are currently forced \(BezelVisibility.current == .showAll ? "on" : "off") in Settings." : nil
         lockButton.isEnabled = hasDisplay
         deleteVirtualButton.isEnabled = editable
+        keepCheckbox.isEnabled = editable
         assignMenu.isEnabled = editable && !connectedDisplays.isEmpty
     }
 
@@ -297,6 +312,7 @@ final class DisplayInspectorView: NSView {
         guard let item = assignMenu.selectedItem, item.tag != 0 else { return }
         onAssignVirtual?(CGDirectDisplayID(item.tag))
     }
+    @objc private func keepChanged() { emit(DisplayEdit(keepWhenDisconnected: keepCheckbox.state == .on)) }
     @objc private func deleteVirtualTapped() { onDeleteVirtual?() }
     private func emit(_ edit: DisplayEdit) { onChange?(edit) }
     @objc private func lockToggled() { emit(DisplayEdit(isLocked: !isLocked)) }

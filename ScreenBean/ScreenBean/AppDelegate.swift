@@ -256,6 +256,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        // A display connected while the app was closed may be one a virtual display was planned for.
+        DispatchQueue.main.async { [weak self] in self?.offerVirtualLinks {} }
     }
 
     /// Re-reads the displays from macOS, e.g. after changing orientation in System Settings.
@@ -359,34 +361,75 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         LayoutPresetStore.shared.delete(preset.id)
     }
 
-    /// A display was plugged in or removed: re-read the layout, then offer the saved preset for this set of displays.
+    /// A display was plugged in or removed: re-read the layout, offer to link a new display to a virtual
+    /// one, then offer the saved preset for this set of displays.
     private func screenParametersChanged() {
         screenChangeWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, let mainView = self.mainView else { return }
+            guard let self else { return }
             self.refreshDisplays()
-            let store = LayoutPresetStore.shared
-            let connected = Set(mainView.connectedDisplays.map(\.persistentID))
-            let key = connected.sorted().joined(separator: ",")
-            guard key != store.lastSuggestedSet else { return }
-            store.lastSuggestedSet = key
-            let matches = store.presets(matching: connected)
-            guard let match = matches.first, !matches.contains(where: { $0.id == store.activeID }), self.window.isVisible else { return }
-            let alert = NSAlert()
-            alert.messageText = "Switch to \u{201C}\(match.name)\u{201D}?"
-            alert.informativeText = "The connected displays match this saved layout."
-            alert.addButton(withTitle: "Switch")
-            alert.addButton(withTitle: "Not Now")
-            alert.beginSheetModal(for: self.window) { response in
-                if response == .alertFirstButtonReturn { self.applyPreset(match) }
-            }
+            self.offerVirtualLinks { self.suggestPreset() }
         }
         screenChangeWork = work
         // Displays settle for a moment after being plugged in.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
     }
 
+    private func suggestPreset() {
+        guard let mainView else { return }
+        let store = LayoutPresetStore.shared
+        let connected = Set(mainView.connectedDisplays.map(\.persistentID))
+        let key = connected.sorted().joined(separator: ",")
+        guard key != store.lastSuggestedSet else { return }
+        store.lastSuggestedSet = key
+        let matches = store.presets(matching: connected)
+        guard let match = matches.first, !matches.contains(where: { $0.id == store.activeID }), window.isVisible else { return }
+        let alert = NSAlert()
+        alert.messageText = "Switch to \u{201C}\(match.name)\u{201D}?"
+        alert.informativeText = "The connected displays match this saved layout."
+        alert.addButton(withTitle: "Switch")
+        alert.addButton(withTitle: "Not Now")
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertFirstButtonReturn { self.applyPreset(match) }
+        }
+    }
+
     // MARK: - Virtual Displays
+
+    private static let linkOfferedKey = "ScreenBean.LinkOfferedDisplays"
+
+    /// A newly connected display may be the real one a virtual display was planned for. Asks once per
+    /// display, and calls `next` when there's nothing more to ask.
+    private func offerVirtualLinks(then next: @escaping () -> Void) {
+        guard let mainView, window.isVisible else { return next() }
+        let defaults = UserDefaults.standard
+        let offered = Set(defaults.stringArray(forKey: Self.linkOfferedKey) ?? [])
+        let virtuals = mainView.unlinkedVirtualDisplays
+        // A display with saved settings is already known; only a never-seen one could be a stand-in.
+        let known = DisplayConfigurationStore.shared.loadAll()
+        guard !virtuals.isEmpty,
+              let fresh = mainView.connectedDisplays.first(where: { known[$0.persistentID] == nil && !offered.contains($0.persistentID) }) else { return next() }
+        defaults.set(Array(offered.union([fresh.persistentID])), forKey: Self.linkOfferedKey)
+
+        let menu = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 26), pullsDown: false)
+        menu.addItem(withTitle: "No, it's a different display")
+        for virtual in virtuals { menu.addItem(withTitle: virtual.nickname) }
+        let alert = NSAlert()
+        alert.messageText = "\u{201C}\(fresh.nickname)\u{201D} was connected"
+        alert.informativeText = "Is it a display you planned? Choose the virtual display it replaces, and it takes that place, size and look."
+        alert.accessoryView = menu
+        alert.addButton(withTitle: "Link")
+        alert.addButton(withTitle: "Not Now")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            let index = menu.indexOfSelectedItem
+            if response == .alertFirstButtonReturn, index > 0 {
+                mainView.assignVirtualDisplay(virtuals[index - 1].displayID, to: fresh.displayID)
+                self?.refreshOverlays()
+            }
+            // There may be more new displays to ask about.
+            self?.offerVirtualLinks(then: next)
+        }
+    }
 
     @objc private func addVirtualDisplay() {
         guard let spec = VirtualDisplayPrompt.run() else { return }

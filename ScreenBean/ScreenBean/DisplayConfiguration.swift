@@ -36,6 +36,8 @@ struct DisplayConfiguration: Codable {
     var isVirtual: Bool
     var pixelWidth: Int
     var pixelHeight: Int
+    /// A connected display kept in the layout, as a virtual stand-in, while it is unplugged.
+    var keepWhenDisconnected: Bool
 
     init(
         persistentID: String,
@@ -59,7 +61,8 @@ struct DisplayConfiguration: Codable {
         isLocked: Bool = false,
         isVirtual: Bool = false,
         pixelWidth: Int = 1920,
-        pixelHeight: Int = 1080
+        pixelHeight: Int = 1080,
+        keepWhenDisconnected: Bool = false
     ) {
         self.persistentID = persistentID
         self.nickname = nickname
@@ -83,13 +86,14 @@ struct DisplayConfiguration: Codable {
         self.isVirtual = isVirtual
         self.pixelWidth = pixelWidth
         self.pixelHeight = pixelHeight
+        self.keepWhenDisconnected = keepWhenDisconnected
     }
 
     private enum CodingKeys: String, CodingKey {
         case persistentID, nickname, widthInches, heightInches
         case xInches, yInches, rotation, isCalibrated
         case colorHex, isColorCustom, uniformBezel, bezelUniform, bezelTop, bezelBottom, bezelLeft, bezelRight
-        case bezelColorHex, showBezel, isLocked, isVirtual, pixelWidth, pixelHeight
+        case bezelColorHex, showBezel, isLocked, isVirtual, pixelWidth, pixelHeight, keepWhenDisconnected
     }
 
     init(from decoder: Decoder) throws {
@@ -118,5 +122,6 @@ struct DisplayConfiguration: Codable {
         isVirtual = try values.decodeIfPresent(Bool.self, forKey: .isVirtual) ?? false
         pixelWidth = try values.decodeIfPresent(Int.self, forKey: .pixelWidth) ?? 1920
         pixelHeight = try values.decodeIfPresent(Int.self, forKey: .pixelHeight) ?? 1080
+        keepWhenDisconnected = try values.decodeIfPresent(Bool.self, forKey: .keepWhenDisconnected) ?? false
     }
 }

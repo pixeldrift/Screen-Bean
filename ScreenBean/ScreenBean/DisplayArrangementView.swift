@@ -1565,7 +1565,7 @@ class DisplayArrangementView: NSView {
         applyImageState(.referenceImage, snapshot.reference)
         applyImageState(.wallpaper, snapshot.wallpaper)
         // Undoing the adding or deleting of a virtual display changes which ones exist.
-        VirtualDisplayStore.shared.ids = displays.filter(\.isVirtual).map(\.persistentID)
+        VirtualDisplayStore.shared.ids = displays.filter { $0.isVirtual && !$0.isRemembered }.map(\.persistentID)
         for display in displays { syncLayoutToDisplay(id: display.displayID, save: true) }
         selectedDisplayIDs = selectedDisplayIDs.filter { id in displays.contains(where: { $0.displayID == id }) }
         selectedGuideIDs = selectedGuideIDs.filter { id in GuideStore.shared.guide(withID: id) != nil }
@@ -1908,7 +1908,7 @@ class DisplayArrangementView: NSView {
                 if configuration.isVirtual {
                     DisplayConfigurationStore.shared.save(configuration)
                     virtualIDs.append(configuration.persistentID)
-                } else if connected.contains(configuration.persistentID) {
+                } else if connected.contains(configuration.persistentID) || configuration.keepWhenDisconnected {
                     DisplayConfigurationStore.shared.save(configuration)
                 } else {
                     missing += 1
@@ -1956,16 +1956,33 @@ class DisplayArrangementView: NSView {
         let doomed = selectedDisplays.filter { $0.isVirtual && !$0.isLocked }
         guard !doomed.isEmpty else { return }
         UndoCenter.shared.perform(doomed.count > 1 ? "Delete Virtual Displays" : "Delete Virtual Display") {
-            let ids = Set(doomed.map(\.persistentID))
+            let ids = Set(doomed.filter { !$0.isRemembered }.map(\.persistentID))
             VirtualDisplayStore.shared.ids.removeAll { ids.contains($0) }
+            // A remembered display is forgotten; it comes back only if it is plugged in again.
+            for display in doomed where display.isRemembered { forgetRememberedDisplay(display.persistentID) }
             reloadDisplays()
         }
     }
 
+    private func forgetRememberedDisplay(_ persistentID: String) {
+        guard var configuration = DisplayConfigurationStore.shared.configuration(for: persistentID) else { return }
+        configuration.keepWhenDisconnected = false
+        DisplayConfigurationStore.shared.save(configuration)
+    }
+
+    /// Virtual displays that aren't a stand-in for a particular display, so they can be matched to a real one.
+    var unlinkedVirtualDisplays: [DisplayInfo] { displays.filter { $0.isVirtual && !$0.isRemembered } }
+
     /// Moves the selected virtual display's place, size and look onto a connected display.
     func assignSelectedVirtualDisplay(to realID: CGDirectDisplayID) {
-        guard let virtualID = selectedDisplayID,
-              let virtual = displays.first(where: { $0.displayID == virtualID }), virtual.isVirtual, !virtual.isLocked,
+        guard let virtualID = selectedDisplayID else { return }
+        assignVirtualDisplay(virtualID, to: realID)
+    }
+
+    /// Links a virtual display to a connected one: the connected display takes the virtual one's
+    /// place, size and look, and the virtual one goes away.
+    func assignVirtualDisplay(_ virtualID: CGDirectDisplayID, to realID: CGDirectDisplayID) {
+        guard let virtual = displays.first(where: { $0.displayID == virtualID }), virtual.isVirtual, !virtual.isLocked,
               let real = displays.first(where: { $0.displayID == realID }), !real.isVirtual,
               let placed = physicalLayout.displays.first(where: { $0.id == virtualID }) else { return }
         UndoCenter.shared.perform("Assign Virtual Display") {
@@ -1977,6 +1994,7 @@ class DisplayArrangementView: NSView {
             configuration.xInches = Double(placed.x)
             configuration.yInches = Double(placed.y)
             DisplayConfigurationStore.shared.save(configuration)
+            if virtual.isRemembered { forgetRememberedDisplay(virtual.persistentID) }
             VirtualDisplayStore.shared.ids.removeAll { $0 == virtual.persistentID }
             reloadDisplays()
             select(.display(realID))
@@ -2443,6 +2461,7 @@ class DisplayArrangementView: NSView {
         if let bezelLeft = edit.bezelLeft { displays[i].bezelLeft = bezelLeft; physicalLayout.displays[j].bezelLeft = CGFloat(bezelLeft) }
         if let bezelRight = edit.bezelRight { displays[i].bezelRight = bezelRight; physicalLayout.displays[j].bezelRight = CGFloat(bezelRight) }
         if let showBezel = edit.showBezel { displays[i].showBezel = showBezel; physicalLayout.displays[j].showBezel = showBezel }
+        if let keep = edit.keepWhenDisconnected { displays[i].keepWhenDisconnected = keep }
         if let isLocked = edit.isLocked { displays[i].isLocked = isLocked; physicalLayout.displays[j].isLocked = isLocked }
         suppressDisplayRebuild = false
         syncSelectedLayoutToDisplay(save: true)

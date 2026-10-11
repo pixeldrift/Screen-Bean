@@ -13,7 +13,7 @@ struct DisplayEdit {
     var undoKey: String {
         [("n", nickname != nil), ("w", width != nil), ("h", height != nil), ("x", x != nil), ("y", y != nil), ("c", color != nil),
          ("u", uniformBezel != nil), ("bu", bezelUniform != nil), ("bt", bezelTop != nil), ("bb", bezelBottom != nil),
-         ("bl", bezelLeft != nil), ("br", bezelRight != nil), ("bc", bezelColor != nil), ("sb", showBezel != nil), ("l", isLocked != nil)]
+         ("bl", bezelLeft != nil), ("br", bezelRight != nil), ("bc", bezelColor != nil), ("sb", showBezel != nil), ("l", isLocked != nil), ("k", keepWhenDisconnected != nil)]
             .filter { $0.1 }.map { $0.0 }.joined(separator: ",")
     }
 
@@ -32,4 +32,5 @@ struct DisplayEdit {
     var bezelColor: NSColor?
     var showBezel: Bool?
     var isLocked: Bool?
+    var keepWhenDisconnected: Bool?
 }
