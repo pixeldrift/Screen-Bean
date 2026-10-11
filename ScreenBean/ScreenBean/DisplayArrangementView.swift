@@ -15,7 +15,12 @@ class DisplayArrangementView: NSView {
     }
 
     /// The display currently selected in the workspace.
-    private(set) var selectedDisplayID: CGDirectDisplayID?
+    /// Every selected display. A single selected display shows its properties; several don't.
+    private(set) var selectedDisplayIDs: Set<CGDirectDisplayID> = []
+    /// The selected display when exactly one is selected.
+    var selectedDisplayID: CGDirectDisplayID? { selectedDisplayIDs.count == 1 ? selectedDisplayIDs.first : nil }
+    /// Selected custom guides, which move together with selected displays.
+    private var selectedGuideIDs: Set<UUID> = []
 
     /// Notifies the app when workspace selection changes.
     var onSelectionChanged: ((DisplayInfo?) -> Void)?
@@ -95,6 +100,13 @@ class DisplayArrangementView: NSView {
     private var guideDrag: UUID?
     private var hoverGuideID: UUID?
     private var guideDragPoint = CGPoint.zero
+    // The group being dragged: where each selected display and guide started.
+    private var groupDisplayStart: [CGDirectDisplayID: CGRect] = [:]
+    private var groupGuideStart: [UUID: Double] = [:]
+    /// A click inside a multiple selection keeps the group for dragging; if it turns out
+    /// to be a plain click, it narrows the selection to that display.
+    private var pendingCollapse: EditTarget?
+    private var didDrag = false
     /// A gap measurement being dragged, and which display's side of it was grabbed.
     private struct GapDrag {
         let measurement: GapMeasurement
@@ -170,7 +182,7 @@ class DisplayArrangementView: NSView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         for area in trackingAreas { removeTrackingArea(area) }
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil))
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .cursorUpdate, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil))
     }
 
     private var settingsObservers: [NSObjectProtocol] = []
@@ -351,7 +363,7 @@ class DisplayArrangementView: NSView {
                 display,
                 in: context,
                 rect: rect,
-                isSelected: display.id == selectedDisplayID,
+                isSelected: selectedDisplayIDs.contains(display.id),
                 label: DisplayIdentity.label(forIndex: index)
             )
         }
@@ -359,6 +371,7 @@ class DisplayArrangementView: NSView {
         drawImageLockIcons(in: context)
         drawGuides()
         drawGapMeasurements()
+        drawGroupSelection()
         var withHandles: [EditTarget] = []
         for target in [currentSelection, hoverTarget].compactMap({ $0 }) where !withHandles.contains(target) {
             withHandles.append(target)
@@ -899,7 +912,7 @@ class DisplayArrangementView: NSView {
         let handleUnderMouse = itemHit(point)?.handle
         if handleUnderMouse != hoverHandle { hoverHandle = handleUnderMouse; needsDisplay = true }
 
-        // Custom guides highlight and show a resize cursor under the mouse.
+        // Custom guides highlight under the mouse.
         let guide = rulerAxis(at: point) == nil ? customGuide(at: point) : nil
         if guide?.id != hoverGuideID {
             hoverGuideID = guide?.id
@@ -911,18 +924,47 @@ class DisplayArrangementView: NSView {
             hoverGapZone = gap?.zone
             needsDisplay = true
         }
-        if let guide {
-            (guide.axis == .horizontal ? NSCursor.resizeUpDown : NSCursor.resizeLeftRight).set()
-        } else if let gap {
-            // The ends move displays across the gap; the middle slides along it.
-            let across = gap.measurement.direction == .horizontal
-            ((across == (gap.zone != .middle)) ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).set()
-        } else if let axis = rulerAxis(at: point) {
-            (axis == .horizontal ? NSCursor.resizeUpDown : NSCursor.resizeLeftRight).set()
-        } else {
-            NSCursor.arrow.set()
-        }
+        cursor(at: point).set()
     }
+
+    override func cursorUpdate(with event: NSEvent) {
+        cursor(at: convert(event.locationInWindow, from: nil)).set()
+    }
+
+    // MARK: - Cursors
+    private func resizeCursor(_ handle: GrabHandle, rotation: CGFloat = 0) -> NSCursor {
+        let base: CGFloat
+        switch handle {
+        case .left, .right: base = 0
+        case .top, .bottom: base = 90
+        case .topRight, .bottomLeft: base = 45
+        case .topLeft, .bottomRight: base = 135
+        }
+        return ToolCursors.resize(angle: base + rotation)
+    }
+
+    /// A horizontal guide moves up and down; a vertical one left and right.
+    private func guideCursor(_ axis: GuideAxis) -> NSCursor {
+        ToolCursors.resize(angle: axis == .horizontal ? 90 : 0)
+    }
+
+    /// The ends of a gap arrow move displays across the gap; the middle slides along it.
+    private func gapCursor(_ measurement: GapMeasurement, zone: GapZone) -> NSCursor {
+        let acrossIsHorizontal = measurement.direction == .horizontal
+        return ToolCursors.resize(angle: acrossIsHorizontal == (zone != .middle) ? 0 : 90)
+    }
+
+    /// The cursor for whatever is under `point`: an arrow pointing the way a drag from there would go.
+    private func cursor(at point: CGPoint) -> NSCursor {
+        if let axis = rulerAxis(at: point) { return guideCursor(axis) }
+        if let guide = customGuide(at: point) { return guideCursor(guide.axis) }
+        if let gap = gapMeasurement(at: point) { return gapCursor(gap.measurement, zone: gap.zone) }
+        if let hit = itemHit(point), let handle = hit.handle { return resizeCursor(handle, rotation: rotation(of: hit.target)) }
+        return .arrow
+    }
+
+    /// How far an item is turned, in degrees. Displays aren't.
+    private func rotation(of target: EditTarget) -> CGFloat { 0 }
 
     override func mouseExited(with event: NSEvent) {
         if hoverTarget != nil { hoverTarget = nil; needsDisplay = true }
@@ -937,9 +979,12 @@ class DisplayArrangementView: NSView {
 
     /// Delete or Backspace removes the custom guide under the mouse.
     override func keyDown(with event: NSEvent) {
-        if (event.keyCode == 51 || event.keyCode == 117), let hoverGuideID {
-            GuideStore.shared.remove(hoverGuideID)
-            self.hoverGuideID = nil
+        if event.keyCode == 51 || event.keyCode == 117, !selectedGuideIDs.isEmpty || hoverGuideID != nil {
+            // Delete removes the selected guides, or the one under the mouse if none are selected.
+            let doomed = selectedGuideIDs.isEmpty ? [hoverGuideID].compactMap { $0 } : Array(selectedGuideIDs)
+            for id in doomed { GuideStore.shared.remove(id) }
+            selectedGuideIDs = []
+            hoverGuideID = nil
         } else {
             super.keyDown(with: event)
         }
@@ -995,7 +1040,7 @@ class DisplayArrangementView: NSView {
         var result: [ResolvedGuide] = []
         if GuideSettings.showEdgeGuides {
             let sources = GuideSettings.edgeScope == .selectedDisplay
-                ? physicalLayout.displays.filter { $0.id == selectedDisplayID }
+                ? physicalLayout.displays.filter { selectedDisplayIDs.contains($0.id) }
                 : physicalLayout.displays
             var seen = Set<String>()
             for display in sources {
@@ -1057,7 +1102,7 @@ class DisplayArrangementView: NSView {
         let guides = resolvedGuides()
         guard !guides.isEmpty else { return }
         for guide in guides {
-            let isActive = guide.customID != nil && (guide.customID == hoverGuideID || guide.customID == guideDrag)
+            let isActive = guide.customID != nil && (guide.customID == hoverGuideID || guide.customID == guideDrag || selectedGuideIDs.contains(guide.customID!))
             let path = NSBezierPath()
             switch guide.axis {
             case .horizontal:
@@ -1395,6 +1440,23 @@ class DisplayArrangementView: NSView {
         }
     }
 
+    // MARK: - Group Selection
+    /// With several displays selected, each gets an outline in its color.
+    private func drawGroupSelection() {
+        guard selectedDisplayIDs.count > 1 else { return }
+        for display in physicalLayout.displays where selectedDisplayIDs.contains(display.id) {
+            let rect = viewRect(forPhysical: outerPhysicalRect(display)).insetBy(dx: -2, dy: -2)
+            let path = NSBezierPath(rect: rect)
+            path.lineWidth = 2.5
+            path.setLineDash([6, 4], count: 2, phase: 0)
+            NSColor.white.withAlphaComponent(0.85).setStroke()
+            path.stroke()
+            path.lineWidth = 1.5
+            NSColor(displayHex: display.colorHex).blended(withFraction: 0.35, of: .black)?.setStroke()
+            path.stroke()
+        }
+    }
+
     // MARK: - Snapping
     /// What a dragged item can snap to: positions for its panel edges and for its outer (bezel) edges.
     private struct SnapTargets {
@@ -1552,8 +1614,8 @@ class DisplayArrangementView: NSView {
     /// display, or all displays as a group (bezels included) when none is selected.
     private func focusRect() -> CGRect? {
         let targets: [PhysicalLayout.Display]
-        if let id = selectedDisplayID, let selected = physicalLayout.displays.first(where: { $0.id == id }) {
-            targets = [selected]
+        if !selectedDisplayIDs.isEmpty {
+            targets = physicalLayout.displays.filter { selectedDisplayIDs.contains($0.id) }
         } else {
             targets = physicalLayout.displays
         }
@@ -1636,11 +1698,13 @@ class DisplayArrangementView: NSView {
     // MARK: - Refresh
     /// Re-reads the connected displays from macOS, keeping the selection if it still exists.
     func reloadDisplays() {
-        let previous = selectedDisplayID
+        let previous = selectedDisplayIDs
         displays = DisplayInfo.detectDisplays()
-        if let previous, !displays.contains(where: { $0.displayID == previous }) {
-            select(nil)
-        } else if previous != nil {
+        let remaining = previous.filter { id in displays.contains(where: { $0.displayID == id }) }
+        if remaining != previous {
+            selectedDisplayIDs = remaining
+            onSelectionChanged?(selectedDisplayInfo())
+        } else if !previous.isEmpty {
             onSelectionChanged?(selectedDisplayInfo())
         }
         needsDisplay = true
@@ -1668,11 +1732,22 @@ class DisplayArrangementView: NSView {
     }
 
     /// Selects a display or the reference image, or clears the selection.
-    private func select(_ target: EditTarget?) {
-        selectedDisplayID = nil
+    /// With `extending`, a display is added to the selection, or removed if it is already in it.
+    private func select(_ target: EditTarget?, extending: Bool = false) {
+        var targetsDisplay = false
+        if case .display? = target { targetsDisplay = true }
+        if !(extending && targetsDisplay) {
+            selectedDisplayIDs = []
+            selectedGuideIDs = []
+        }
         selectedImage = nil
         switch target {
-        case .display(let id): selectedDisplayID = id
+        case .display(let id):
+            if extending {
+                if selectedDisplayIDs.contains(id) { selectedDisplayIDs.remove(id) } else { selectedDisplayIDs.insert(id) }
+            } else {
+                selectedDisplayIDs = [id]
+            }
         case .image(let slot): selectedImage = slot
         case nil: break
         }
@@ -1680,24 +1755,72 @@ class DisplayArrangementView: NSView {
         needsDisplay = true
     }
 
+    /// Remembers where everything selected started, so a drag can move the whole group together.
+    private func captureGroup() {
+        groupDisplayStart = [:]
+        for id in selectedDisplayIDs {
+            if let rect = physicalOuterRect(of: .display(id)) { groupDisplayStart[id] = rect }
+        }
+        groupGuideStart = [:]
+        for id in selectedGuideIDs {
+            if let guide = GuideStore.shared.guide(withID: id) { groupGuideStart[id] = guide.position }
+        }
+    }
+
+    private var isGroupSelected: Bool { selectedDisplayIDs.count + selectedGuideIDs.count > 1 }
+
+    /// Moves the rest of the group by the same amount as the item being dragged. Locked displays stay put.
+    private func moveGroup(dx: CGFloat, dy: CGFloat, excludingDisplay: CGDirectDisplayID?, excludingGuide: UUID?) {
+        for (id, start) in groupDisplayStart where id != excludingDisplay && isEditable(.display(id)) {
+            apply(start.offsetBy(dx: dx, dy: dy), to: .display(id))
+        }
+        for (id, start) in groupGuideStart where id != excludingGuide {
+            if let guide = GuideStore.shared.guide(withID: id) {
+                GuideStore.shared.setPosition(start + Double(guide.axis == .vertical ? dx : dy), for: id)
+            }
+        }
+    }
+
     override func mouseDown(
         with event: NSEvent
     ) {
         let point = convert(event.locationInWindow, from: nil)
         window?.makeFirstResponder(self)
+        let extending = event.modifierFlags.contains(.shift)
+        groupDisplayStart = [:]
+        groupGuideStart = [:]
+        pendingCollapse = nil
+        didDrag = false
 
-        // Dragging out of a ruler creates a guide; dragging a custom guide moves it.
+        // Dragging out of a ruler creates a guide.
         if let axis = rulerAxis(at: point) {
             GuideSettings.showCustomGuides = true
             let guide = Guide(axis: axis, position: guidePosition(for: point, axis: axis))
             GuideStore.shared.add(guide)
+            select(nil)
+            selectedGuideIDs = [guide.id]
             guideDrag = guide.id
             guideDragPoint = point
+            pushCursor(guideCursor(axis))
             return
         }
+        // Clicking a custom guide selects it (Shift adds or removes it) and drags it with the rest of the selection.
         if let guide = customGuide(at: point) {
+            if extending {
+                if selectedGuideIDs.contains(guide.id) { selectedGuideIDs.remove(guide.id) } else { selectedGuideIDs.insert(guide.id) }
+                selectedImage = nil
+                onSelectionChanged?(selectedDisplayInfo())
+                needsDisplay = true
+                return
+            }
+            if !selectedGuideIDs.contains(guide.id) {
+                select(nil)
+                selectedGuideIDs = [guide.id]
+            }
+            captureGroup()
             guideDrag = guide.id
             guideDragPoint = point
+            pushCursor(guideCursor(guide.axis))
             return
         }
         // Dragging a gap measurement slides it along the gap, or moves the display on the grabbed side.
@@ -1709,12 +1832,13 @@ class DisplayArrangementView: NSView {
                 rect = physicalOuterRect(of: .display(grabbed))
             }
             gapDrag = GapDrag(measurement: hit.measurement, zone: hit.zone, startPoint: point, startRect: rect)
+            pushCursor(gapCursor(hit.measurement, zone: hit.zone))
             return
         }
 
         // The lock icon is only visible (and clickable) on locked or selected displays.
         if let locked = physicalLayout.displays.reversed().first(where: {
-            ($0.isLocked || $0.id == selectedDisplayID) && lockIconRect(in: physicalRectToView($0)).contains(point)
+            ($0.isLocked || selectedDisplayIDs.contains($0.id)) && lockIconRect(in: physicalRectToView($0)).contains(point)
         }) {
             select(.display(locked.id))
             updateSelectedDisplay(DisplayEdit(isLocked: !locked.isLocked))
@@ -1731,15 +1855,30 @@ class DisplayArrangementView: NSView {
         }
 
         // Clicking an item selects it and starts moving it, or resizing it from a handle.
-        // Clicking empty workspace clears the selection and begins panning.
+        // Shift adds a display to the selection or removes it. Clicking empty workspace
+        // clears the selection and begins panning.
         if let hit = itemHit(point) {
-            select(hit.target)
             isPanning = false
+            switch hit.target {
+            case .display(let id) where hit.handle == nil && extending:
+                select(hit.target, extending: true)
+                guard selectedDisplayIDs.contains(id) else { return }
+            case .display(let id) where hit.handle == nil && selectedDisplayIDs.contains(id) && isGroupSelected:
+                // Keep the group so it can be dragged as one.
+                pendingCollapse = hit.target
+            default:
+                select(hit.target)
+            }
             guard isEditable(hit.target), let start = physicalOuterRect(of: hit.target) else { return }
             dragTarget = hit.target
             dragMode = hit.handle.map(DragMode.resize) ?? .move
             dragStartPoint = point
             dragStartRect = start
+            if case .resize(let handle) = dragMode {
+                pushCursor(resizeCursor(handle, rotation: rotation(of: hit.target)))
+            } else if case .display = hit.target {
+                captureGroup()
+            }
             return
         }
 
@@ -1768,8 +1907,15 @@ class DisplayArrangementView: NSView {
         let currentPoint = convert(event.locationInWindow, from: nil)
 
         if let guideDrag, let guide = GuideStore.shared.guide(withID: guideDrag) {
-            GuideStore.shared.setPosition(guidePosition(for: currentPoint, axis: guide.axis), for: guideDrag)
+            let position = guidePosition(for: currentPoint, axis: guide.axis)
+            GuideStore.shared.setPosition(position, for: guideDrag)
             guideDragPoint = currentPoint
+            // The rest of a multiple selection travels with the guide.
+            if isGroupSelected, let start = groupGuideStart[guideDrag] {
+                let delta = CGFloat(position - start)
+                moveGroup(dx: guide.axis == .vertical ? delta : 0, dy: guide.axis == .horizontal ? delta : 0, excludingDisplay: nil, excludingGuide: guideDrag)
+            }
+            didDrag = true
             return
         }
 
@@ -1810,6 +1956,11 @@ class DisplayArrangementView: NSView {
                 rect = resizedRect(dragStartRect, handle: handle, to: pointer, keepAspect: keepAspect, fromCenter: fromCenter, minSize: minSize)
             }
             apply(rect, to: dragTarget)
+            // Moving one selected display moves the whole selection.
+            if case .move = dragMode, case .display(let id) = dragTarget, isGroupSelected {
+                moveGroup(dx: rect.minX - dragStartRect.minX, dy: rect.minY - dragStartRect.minY, excludingDisplay: id, excludingGuide: nil)
+            }
+            didDrag = true
             return
         }
 
@@ -1860,7 +2011,7 @@ class DisplayArrangementView: NSView {
             displays[i].physicalWidthInches = Double(panel.width)
             displays[i].physicalHeightInches = Double(panel.height)
             suppressDisplayRebuild = false
-            syncSelectedLayoutToDisplay(save: false)
+            syncLayoutToDisplay(id: id, save: false)
             needsDisplay = true
             onDisplayValuesChanged?(displays[i], physicalLayout.displays[j].centerX, physicalLayout.displays[j].centerY)
         }
@@ -1869,6 +2020,7 @@ class DisplayArrangementView: NSView {
     override func mouseUp(
         with event: NSEvent
     ) {
+        popCursor()
         if gapDrag != nil {
             gapDrag = nil
             syncSelectedLayoutToDisplay(save: true)
@@ -1879,18 +2031,29 @@ class DisplayArrangementView: NSView {
             // Dropping a guide back on its ruler removes it.
             let point = convert(event.locationInWindow, from: nil)
             let onRuler = guide.axis == .horizontal ? point.x <= rulerSize : point.y >= bounds.maxY - rulerSize
-            if onRuler { GuideStore.shared.remove(guideDrag) } else { GuideStore.shared.save() }
+            if onRuler {
+                GuideStore.shared.remove(guideDrag)
+                selectedGuideIDs.remove(guideDrag)
+            } else {
+                GuideStore.shared.save()
+            }
+            for id in groupDisplayStart.keys { syncLayoutToDisplay(id: id, save: true) }
             self.guideDrag = nil
             needsDisplay = true
             return
         }
-        popCursor()
         isPanning = false
         isZoomDragging = false
-        if case .display? = dragTarget {
-            syncSelectedLayoutToDisplay(save: true)
+        if case .display(let id)? = dragTarget {
+            for moved in Set(groupDisplayStart.keys).union([id]) { syncLayoutToDisplay(id: moved, save: true) }
+            if !groupGuideStart.isEmpty { GuideStore.shared.save() }
         }
         dragTarget = nil
+        // A plain click on a member of a multiple selection narrows it to that display.
+        if let pending = pendingCollapse, !didDrag { select(pending) }
+        pendingCollapse = nil
+        groupDisplayStart = [:]
+        groupGuideStart = [:]
     }
 
     func selectedDisplayInfo() -> DisplayInfo? {
@@ -1932,7 +2095,13 @@ class DisplayArrangementView: NSView {
     }
 
     private func syncSelectedLayoutToDisplay(save: Bool) {
-        guard let id = selectedDisplayID, let item = physicalLayout.displays.first(where: { $0.id == id }), let i = displays.firstIndex(where: { $0.displayID == id }) else { return }
+        guard let id = selectedDisplayID else { return }
+        syncLayoutToDisplay(id: id, save: save)
+    }
+
+    /// Saves one display's size, position and appearance with the others.
+    private func syncLayoutToDisplay(id: CGDirectDisplayID, save: Bool) {
+        guard let item = physicalLayout.displays.first(where: { $0.id == id }), let i = displays.firstIndex(where: { $0.displayID == id }) else { return }
         var configuration = displays[i].makeConfiguration()
         configuration.xInches = Double(item.x); configuration.yInches = Double(item.y)
         configuration.widthInches = displays[i].physicalWidthInches; configuration.heightInches = displays[i].physicalHeightInches

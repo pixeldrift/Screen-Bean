@@ -35,7 +35,7 @@ final class DisplayOverlayManager {
     private var identities: [DisplayIdentity] = []
     private var guides: [ResolvedGuide] = []
     private var panels: [CGDirectDisplayID: CGRect] = [:]
-    private var selectedID: CGDirectDisplayID?
+    private var selectedIDs: Set<CGDirectDisplayID> = []
     private var windows: [CGDirectDisplayID: NSWindow] = [:]
     private var globalMonitor: Any?
     private var localMonitor: Any?
@@ -50,9 +50,9 @@ final class DisplayOverlayManager {
     /// Call whenever the displays, their appearance or the selection change.
     /// `guides` are in physical inches and `panels` give each display's place on that canvas,
     /// which is how a guide is mapped onto every real screen it crosses.
-    func update(displays: [DisplayInfo], selectedID: CGDirectDisplayID?, guides: [ResolvedGuide], panels: [CGDirectDisplayID: CGRect]) {
+    func update(displays: [DisplayInfo], selectedIDs: Set<CGDirectDisplayID>, guides: [ResolvedGuide], panels: [CGDirectDisplayID: CGRect]) {
         identities = DisplayIdentity.identities(for: displays)
-        self.selectedID = selectedID
+        self.selectedIDs = selectedIDs
         self.guides = guides
         self.panels = panels
         refresh()
@@ -83,7 +83,7 @@ final class DisplayOverlayManager {
         var wanted = Set<CGDirectDisplayID>()
         for identity in identities {
             let showsIdentity = identifyEnabled && !(excludePrimary && identity.isPrimary)
-            let showsBorder = identity.id == selectedID
+            let showsBorder = selectedIDs.contains(identity.id)
             let preview = previewImages?[identity.id]
             let showsGuides = !guides.isEmpty && panels[identity.id] != nil
             guard showsIdentity || showsBorder || preview != nil || showsGuides, let screen = NSScreen.screen(forDisplayID: identity.id) else { continue }

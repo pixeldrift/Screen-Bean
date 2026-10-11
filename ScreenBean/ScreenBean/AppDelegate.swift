@@ -202,7 +202,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let mainView else { return }
         overlays.update(
             displays: mainView.displays,
-            selectedID: mainView.selectedDisplayID,
+            selectedIDs: mainView.selectedDisplayIDs,
             guides: mainView.resolvedGuides(),
             panels: mainView.displayPanelRects()
         )
