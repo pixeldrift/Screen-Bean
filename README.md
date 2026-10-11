@@ -481,6 +481,10 @@ This allows Screen Bean to restore display-specific configuration between launch
 * [x]	Select displays
 * [x]	Drag displays
 * [ ]	Rotate displays
+* [ ]	Rotate display clockwise (90°)
+* [ ]	Rotate display counterclockwise (90°)
+* [ ]	Flip display horizontally (mirror)
+* [ ]	Flip display vertically (mirror)
 * [x]	Edit physical dimensions
 * [ ]	Display calibration UI
 * [ ]	Type fractional measurements (for example "23 1/8") in number inputs
