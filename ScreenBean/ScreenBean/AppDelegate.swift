@@ -36,6 +36,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let guidesItem = NSMenuItem(title: "Show Guides", action: #selector(toggleGuides), keyEquivalent: ";")
         guidesItem.target = self
         viewMenu.addItem(guidesItem)
+        let gapItem = NSMenuItem(title: "Show Gap Measurements", action: #selector(toggleGapMeasurements), keyEquivalent: "")
+        gapItem.target = self
+        viewMenu.addItem(gapItem)
         let clearGuidesItem = NSMenuItem(title: "Clear Custom Guides", action: #selector(clearGuides), keyEquivalent: "")
         clearGuidesItem.target = self
         viewMenu.addItem(clearGuidesItem)
@@ -240,10 +243,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         MeasurementFormat.useFractions.toggle()
     }
 
+    @objc private func toggleGapMeasurements() { GuideSettings.showGapMeasurements.toggle() }
     @objc private func toggleGuides() { GuideSettings.showGuides.toggle() }
     @objc private func clearGuides() { GuideStore.shared.removeAll() }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(toggleGapMeasurements) { item.state = GuideSettings.showGapMeasurements ? .on : .off }
         if item.action == #selector(toggleGuides) { item.state = GuideSettings.showGuides ? .on : .off }
         if item.action == #selector(clearGuides) { return !GuideStore.shared.guides.isEmpty }
         if item.action == #selector(toggleFractions) {

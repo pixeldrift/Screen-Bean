@@ -16,6 +16,7 @@ final class SettingsPanel: NSView {
     private let edgeGuidesCheckbox = NSButton(checkboxWithTitle: "Edge guides", target: nil, action: nil)
     private let edgeScopeControl = NSSegmentedControl(labels: ["All displays", "Selected"], trackingMode: .selectOne, target: nil, action: nil)
     private let onScreensCheckbox = NSButton(checkboxWithTitle: "Show on real screens", target: nil, action: nil)
+    private let gapMeasurementsCheckbox = NSButton(checkboxWithTitle: "Gap measurements", target: nil, action: nil)
     private let clearGuidesButton = NSButton(title: "Clear Custom Guides", target: nil, action: nil)
     private let bezelControl = NSSegmentedControl(labels: ["Per display", "Show all", "Hide all"], trackingMode: .selectOne, target: nil, action: nil)
 
@@ -79,10 +80,12 @@ final class SettingsPanel: NSView {
         edgeRow.alignment = .centerY
         onScreensCheckbox.target = self; onScreensCheckbox.action = #selector(onScreensToggled)
         onScreensCheckbox.toolTip = "Draw the guides on the real displays so they line up across screens in space."
+        gapMeasurementsCheckbox.target = self; gapMeasurementsCheckbox.action = #selector(gapMeasurementsToggled)
+        gapMeasurementsCheckbox.toolTip = "Show the distance across empty space between displays. Drag an arrow to move a display or slide it along the gap."
         clearGuidesButton.bezelStyle = .rounded
         clearGuidesButton.controlSize = .small
         clearGuidesButton.target = self; clearGuidesButton.action = #selector(clearGuides)
-        let guides = NSStackView(views: [guidesRow, edgeRow, onScreensCheckbox, clearGuidesButton])
+        let guides = NSStackView(views: [guidesRow, edgeRow, onScreensCheckbox, gapMeasurementsCheckbox, clearGuidesButton])
         guides.orientation = .vertical; guides.alignment = .leading; guides.spacing = 6
         NotificationCenter.default.addObserver(forName: GuideSettings.didChange, object: nil, queue: .main) { [weak self] _ in self?.syncGuideControls() }
         syncGuideControls()
@@ -104,6 +107,7 @@ final class SettingsPanel: NSView {
         edgeGuidesCheckbox.state = GuideSettings.showEdgeGuides ? .on : .off
         edgeScopeControl.selectedSegment = GuideSettings.edgeScope.rawValue
         onScreensCheckbox.state = GuideSettings.showOnScreens ? .on : .off
+        gapMeasurementsCheckbox.state = GuideSettings.showGapMeasurements ? .on : .off
         let enabled = GuideSettings.showGuides
         edgeGuidesCheckbox.isEnabled = enabled
         edgeScopeControl.isEnabled = enabled && GuideSettings.showEdgeGuides
@@ -114,6 +118,7 @@ final class SettingsPanel: NSView {
     @objc private func edgeGuidesToggled() { GuideSettings.showEdgeGuides = edgeGuidesCheckbox.state == .on }
     @objc private func edgeScopeChanged() { GuideSettings.edgeScope = EdgeGuideScope(rawValue: edgeScopeControl.selectedSegment) ?? .allDisplays }
     @objc private func onScreensToggled() { GuideSettings.showOnScreens = onScreensCheckbox.state == .on }
+    @objc private func gapMeasurementsToggled() { GuideSettings.showGapMeasurements = gapMeasurementsCheckbox.state == .on }
     @objc private func clearGuides() { GuideStore.shared.removeAll() }
 
     @objc private func fractionsToggled() { MeasurementFormat.useFractions = fractionsSwitch.state == .on }

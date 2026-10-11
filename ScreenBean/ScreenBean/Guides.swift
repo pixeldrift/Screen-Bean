@@ -70,6 +70,12 @@ enum GuideSettings {
         set { set(newValue.rawValue, forKey: "ScreenBean.EdgeGuideScope") }
     }
 
+    /// Measurements across the gaps between displays.
+    static var showGapMeasurements: Bool {
+        get { bool("ScreenBean.ShowGapMeasurements", default: true) }
+        set { set(newValue, forKey: "ScreenBean.ShowGapMeasurements") }
+    }
+
     /// Also draw the guides on the real screens.
     static var showOnScreens: Bool {
         get { bool("ScreenBean.ShowGuidesOnScreens", default: false) }
