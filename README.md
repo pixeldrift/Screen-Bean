@@ -480,11 +480,6 @@ This allows Screen Bean to restore display-specific configuration between launch
 * [ ]	Rulers
 * [x]	Select displays
 * [x]	Drag displays
-* [ ]	Rotate displays
-* [ ]	Rotate display clockwise (90°)
-* [ ]	Rotate display counterclockwise (90°)
-* [ ]	Flip display horizontally (mirror)
-* [ ]	Flip display vertically (mirror)
 * [x]	Edit physical dimensions
 * [ ]	Display calibration UI
 * [ ]	Type fractional measurements (for example "23 1/8") in number inputs
@@ -562,6 +557,16 @@ The interactive workspace. Draws the grid and displays from the `PhysicalLayout`
 #### DisplayInspectorView
 
 The sidebar for editing the selected display: nickname, physical size, position, color and bezels.
+
+### Backlog — Low Priority
+
+Rarely needed, so these wait until the main phases are working.
+
+* [ ]	Rotate displays
+* [ ]	Rotate display clockwise (90°)
+* [ ]	Rotate display counterclockwise (90°)
+* [ ]	Flip display horizontally (mirror)
+* [ ]	Flip display vertically (mirror)
 
 ---
 
