@@ -46,3 +46,17 @@ extension NSColor {
         return String(format: "%02X%02X%02X", Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
     }
 }
+
+/// The diagonal gradient used to fill a display, in the workspace and on the real screen.
+enum DisplayGradient {
+    static func make(hex: String) -> CGGradient? {
+        let base = NSColor(displayHex: hex)
+        let light = base.blended(withFraction: 0.45, of: .white) ?? base
+        let dark = base.blended(withFraction: 0.50, of: .black) ?? base
+        return CGGradient(
+            colorsSpace: CGColorSpaceCreateDeviceRGB(),
+            colors: [light.cgColor, base.cgColor, dark.cgColor] as CFArray,
+            locations: [0, 0.5, 1]
+        )
+    }
+}

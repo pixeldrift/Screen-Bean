@@ -52,6 +52,12 @@ class DisplayArrangementView: NSView {
         slot == .referenceImage ? referenceLayer : wallpaperLayer
     }
 
+    /// Whether an image draws over the displays. A wallpaper previewed clipped to the
+    /// displays always does, since it would otherwise be hidden behind them.
+    private func drawsAboveDisplays(_ slot: ImageLayerSlot) -> Bool {
+        layer(slot).blend.aboveDisplays || (slot == .wallpaper && wallpaperClipsToDisplays)
+    }
+
     private func setFrame(_ frame: ImageFrame?, for slot: ImageLayerSlot) {
         if slot == .referenceImage { referenceLayer.frame = frame } else { wallpaperLayer.frame = frame }
     }
@@ -301,7 +307,7 @@ class DisplayArrangementView: NSView {
         guard !physicalLayout.displays.isEmpty else {
             return
         }
-        for slot in imageSlots where !layer(slot).blend.aboveDisplays { drawImageLayer(slot) }
+        for slot in imageSlots where !drawsAboveDisplays(slot) { drawImageLayer(slot) }
         for (index, display) in physicalLayout.displays.enumerated() {
             let rect =
                 physicalRectToView(
@@ -315,7 +321,7 @@ class DisplayArrangementView: NSView {
                 label: DisplayIdentity.label(forIndex: index)
             )
         }
-        for slot in imageSlots where layer(slot).blend.aboveDisplays { drawImageLayer(slot) }
+        for slot in imageSlots where drawsAboveDisplays(slot) { drawImageLayer(slot) }
         drawImageLockIcons(in: context)
         var withHandles: [EditTarget] = []
         for target in [currentSelection, hoverTarget].compactMap({ $0 }) where !withHandles.contains(target) {
@@ -531,14 +537,7 @@ class DisplayArrangementView: NSView {
         }
 
         let baseColor = NSColor(displayHex: display.colorHex)
-        let light = baseColor.blended(withFraction: 0.45, of: .white) ?? baseColor
-        let dark = baseColor.blended(withFraction: 0.50, of: .black) ?? baseColor
-        let colors = [light.cgColor, baseColor.cgColor, dark.cgColor] as CFArray
-        if let gradient = CGGradient(
-            colorsSpace: CGColorSpaceCreateDeviceRGB(),
-            colors: colors,
-            locations: [0, 0.5, 1]
-        ) {
+        if let gradient = DisplayGradient.make(hex: display.colorHex) {
             context.saveGState()
             context.addRect(rect)
             context.clip()
@@ -725,8 +724,8 @@ class DisplayArrangementView: NSView {
     private func targetsFrontToBack() -> [EditTarget] {
         let displayTargets = physicalLayout.displays.reversed().map { EditTarget.display($0.id) }
         func isShown(_ slot: ImageLayerSlot) -> Bool { layer(slot).image != nil && layer(slot).blend.opacity > 0 }
-        let front = imageSlots.reversed().filter { isShown($0) && layer($0).blend.aboveDisplays }.map { EditTarget.image($0) }
-        let back = imageSlots.reversed().filter { isShown($0) && !layer($0).blend.aboveDisplays }.map { EditTarget.image($0) }
+        let front = imageSlots.reversed().filter { isShown($0) && drawsAboveDisplays($0) }.map { EditTarget.image($0) }
+        let back = imageSlots.reversed().filter { isShown($0) && !drawsAboveDisplays($0) }.map { EditTarget.image($0) }
         return front + displayTargets + back
     }
 

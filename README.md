@@ -511,6 +511,7 @@ macOS has no public API for changing a display's rotation, so these edit Screen 
 * [x]	Position and scale wallpaper
 * [x]	Preview wallpaper across displays
 * [x]	Toggle preview clipped to the displays
+* [x]	Preview the wallpaper full screen across all real displays
 * [x]	Lock wallpaper
 * [x]	Account for display rotation
 * [x]	Calculate output resolution

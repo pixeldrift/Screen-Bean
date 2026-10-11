@@ -12,6 +12,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainView: DisplayArrangementView?
     private let overlays = DisplayOverlayManager()
     private let identifyButton = NSButton(title: "Identify Displays", target: nil, action: nil)
+    private let previewButton = NSButton(title: "Preview Wallpaper", target: nil, action: nil)
     private let excludePrimaryCheckbox = NSButton(checkboxWithTitle: "Exclude primary", target: nil, action: nil)
     private static let excludePrimaryKey = "ScreenBean.ExcludePrimaryFromIdentify"
 
@@ -123,13 +124,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         identifyButton.setButtonType(.pushOnPushOff)
         identifyButton.bezelStyle = .rounded
         identifyButton.target = self; identifyButton.action = #selector(identifyToggled)
-        identifyButton.toolTip = "Show each display's letter, name and size on the real screens. Stays on until clicked again."
+        identifyButton.toolTip = "Fill each real screen with its letter, name and size. Ends on any click or key press."
+        previewButton.setButtonType(.pushOnPushOff)
+        previewButton.bezelStyle = .rounded
+        previewButton.target = self; previewButton.action = #selector(previewToggled)
+        previewButton.toolTip = "Show the wallpaper across all real screens. Ends on any click or key press."
+        overlays.clickThroughViews = [identifyButton, previewButton]
+        overlays.onModesStopped = { [weak self] in
+            self?.identifyButton.state = .off
+            self?.previewButton.state = .off
+        }
         excludePrimaryCheckbox.target = self; excludePrimaryCheckbox.action = #selector(excludePrimaryToggled)
         excludePrimaryCheckbox.toolTip = "Leave the primary display clear while identifying."
         let excluded = UserDefaults.standard.bool(forKey: Self.excludePrimaryKey)
         excludePrimaryCheckbox.state = excluded ? .on : .off
         overlays.excludePrimary = excluded
-        let identifyRow = NSStackView(views: [excludePrimaryCheckbox, identifyButton])
+        let identifyRow = NSStackView(views: [excludePrimaryCheckbox, identifyButton, previewButton])
         identifyRow.orientation = .horizontal
         identifyRow.spacing = 12
         let systemRow = NSStackView(views: [refreshButton, settingsButton])
@@ -195,6 +205,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func identifyToggled() {
         overlays.identifyEnabled = identifyButton.state == .on
         refreshOverlays()
+    }
+
+    /// Shows each display's slice of the wallpaper full screen, spanning all displays.
+    @objc private func previewToggled() {
+        guard previewButton.state == .on else {
+            overlays.hidePreview()
+            return
+        }
+        guard let export = wallpaperExportOrAlert() else {
+            previewButton.state = .off
+            return
+        }
+        refreshOverlays()
+        overlays.showPreview(Dictionary(export.slices.map { ($0.displayID, $0.image) }, uniquingKeysWith: { first, _ in first }))
     }
 
     @objc private func excludePrimaryToggled() {
