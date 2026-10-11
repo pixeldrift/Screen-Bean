@@ -25,6 +25,7 @@ final class DisplayInspectorView: NSView {
     private let displayColor = ColorSwatchButton()
     private let bezelColor = ColorSwatchButton()
     private let showBezel = NSButton(checkboxWithTitle: "Show bezel", target: nil, action: nil)
+    private let fractionsCheckbox = NSButton(checkboxWithTitle: "Fractions", target: nil, action: nil)
     private let resolution = NSTextField(labelWithString: "—")
     private let ppi = NSTextField(labelWithString: "—")
     private let role = NSTextField(labelWithString: "—")
@@ -86,10 +87,18 @@ final class DisplayInspectorView: NSView {
             grid(valueCell("Native Resolution", resolution), valueCell("Pixel Density", ppi)),
             grid(valueCell("Display Role", role), valueCell("Orientation", orientation))
         ], spacing: 8)
-        let dimensions = section("Dimensions & Position", [
+        fractionsCheckbox.target = self; fractionsCheckbox.action = #selector(fractionsToggled)
+        fractionsCheckbox.toolTip = "Show measurements as fractions of an inch (nearest 16th). Fractions like 23 1/8 can always be typed."
+        fractionsCheckbox.state = MeasurementFormat.useFractions ? .on : .off
+        NotificationCenter.default.addObserver(forName: MeasurementFormat.didChange, object: nil, queue: .main) { [weak self] _ in
+            self?.fractionsCheckbox.state = MeasurementFormat.useFractions ? .on : .off
+        }
+        let dimensionsHeader = NSStackView(views: [sectionTitle("Dimensions & Position"), NSView(), fractionsCheckbox])
+        dimensionsHeader.distribution = .fill
+        let dimensions = stack([dimensionsHeader] + [
             grid(cell("Width", "inches", width), cell("Height", "inches", height)),
             grid(cell("X-Pos", "inches", x), cell("Y-Pos", "inches", y))
-        ])
+        ], spacing: 8)
 
         // Bezel: a size caption with the Uniform toggle, then either one field and a slider
         // or a cross of four sides, then colors and visibility.
@@ -234,6 +243,7 @@ final class DisplayInspectorView: NSView {
     // MARK: - Actions
 
     private func emit(_ edit: DisplayEdit) { onChange?(edit) }
+    @objc private func fractionsToggled() { MeasurementFormat.useFractions = fractionsCheckbox.state == .on }
     @objc private func lockToggled() { emit(DisplayEdit(isLocked: !isLocked)) }
     @objc private func nameChanged() { emit(DisplayEdit(nickname: nickname.stringValue)) }
     @objc private func uniformChanged() { emit(DisplayEdit(uniformBezel: uniform.state == .on)) }

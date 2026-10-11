@@ -25,15 +25,23 @@ final class NumberInput: NSView {
     /// Called with the new value after the user changes it.
     var onChange: ((Double) -> Void)?
     var minimum = 0.0
-    var step = 0.1 { didSet { stepper.increment = step } }
+    /// Step in decimal mode; fraction mode steps by a 16th.
+    var step = 0.1 { didSet { updateStep() } }
     var isEnabled = true { didSet { field.isEnabled = isEnabled; stepper.isEnabled = isEnabled } }
 
     private let field = NSTextField(string: "")
     private let stepper = NSStepper()
 
+    private var storedValue = 0.0
+
+    /// The exact value. The field may show it rounded to a 16th in fraction mode.
     var value: Double {
-        get { field.doubleValue }
-        set { field.doubleValue = newValue; stepper.doubleValue = newValue }
+        get { storedValue }
+        set {
+            storedValue = newValue
+            stepper.doubleValue = newValue
+            field.stringValue = MeasurementFormat.string(newValue)
+        }
     }
 
     /// Clears the field to show there is no value (e.g. nothing selected).
@@ -42,18 +50,17 @@ final class NumberInput: NSView {
     override init(frame: NSRect) { super.init(frame: frame); build() }
     required init?(coder: NSCoder) { super.init(coder: coder); build() }
 
+    deinit { NotificationCenter.default.removeObserver(self) }
+
     private func build() {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 1
-        formatter.maximumFractionDigits = 4
-        field.formatter = formatter
         field.isBezeled = true; field.bezelStyle = .roundedBezel
         field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         field.target = self; field.action = #selector(fieldChanged)
         field.delegate = ReturnCommitDelegate.shared
         stepper.minValue = -100000; stepper.maxValue = 100000; stepper.increment = step
         stepper.valueWraps = false
+        updateStep()
+        NotificationCenter.default.addObserver(self, selector: #selector(formatChanged), name: MeasurementFormat.didChange, object: nil)
         stepper.target = self; stepper.action = #selector(stepperChanged)
         for v in [field, stepper] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
         NSLayoutConstraint.activate([
@@ -75,14 +82,31 @@ final class NumberInput: NSView {
         return stack
     }
 
-    /// Applies a drag or stepper change, respecting the minimum.
+    private func updateStep() { stepper.increment = MeasurementFormat.step(decimal: step) }
+
+    @objc private func formatChanged() {
+        updateStep()
+        if !field.stringValue.isEmpty { field.stringValue = MeasurementFormat.string(storedValue) }
+    }
+
+    /// Applies a drag change, respecting the minimum. Fraction mode snaps to a 16th.
     func nudge(by delta: Double) {
-        value = max(minimum, value + delta)
+        var next = value + delta
+        if MeasurementFormat.useFractions { next = MeasurementFormat.roundedToFraction(next) }
+        value = max(minimum, next)
         onChange?(value)
     }
 
     @objc private func fieldChanged() {
-        value = max(minimum, field.doubleValue)
+        let text = field.stringValue
+        // Leaving a field without typing keeps the exact value even if the field shows it rounded.
+        if text == MeasurementFormat.string(storedValue) { return }
+        guard let parsed = MeasurementFormat.parse(text) else {
+            NSSound.beep()
+            field.stringValue = MeasurementFormat.string(storedValue)
+            return
+        }
+        value = max(minimum, parsed)
         onChange?(value)
     }
 

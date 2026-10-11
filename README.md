@@ -529,8 +529,8 @@ macOS has no public API for changing a display's rotation, so these edit Screen 
 * [ ]	Rulers and alignment guides (one tool, drawn across all displays)
 * [ ]	Measurement guides
 * [ ]	Custom guides
-* [ ]	Type fractional measurements (for example "23 1/8") in number inputs
-* [ ]	Toggle number inputs between decimal and fractions (nearest 16th)
+* [x]	Type fractional measurements (for example "23 1/8") in number inputs
+* [x]	Toggle number inputs between decimal and fractions (nearest 16th)
 * [ ]	Unit options (inches, centimeters, and others)
 
 ### Phase 5 — Mouse Mapping

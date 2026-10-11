@@ -18,6 +18,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenu = NSMenu()
         appMenu.addItem(NSMenuItem(title: "Quit ScreenBean", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         appMenuItem.submenu = appMenu
+        let viewMenuItem = NSMenuItem()
+        mainMenu.addItem(viewMenuItem)
+        let viewMenu = NSMenu(title: "View")
+        let fractionsItem = NSMenuItem(title: "Show Measurements as Fractions", action: #selector(toggleFractions), keyEquivalent: "")
+        fractionsItem.target = self
+        viewMenu.addItem(fractionsItem)
+        viewMenuItem.submenu = viewMenu
         NSApp.mainMenu = mainMenu
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
@@ -151,6 +158,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Re-reads the displays from macOS, e.g. after changing orientation in System Settings.
     @objc private func refreshDisplays() {
         mainView?.reloadDisplays()
+    }
+
+    // MARK: - Measurements
+
+    @objc private func toggleFractions() {
+        MeasurementFormat.useFractions.toggle()
+    }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(toggleFractions) {
+            item.state = MeasurementFormat.useFractions ? .on : .off
+        }
+        return true
     }
 
     // MARK: - Wallpaper
