@@ -186,8 +186,9 @@ class DisplayArrangementView: NSView {
             let physicalHeight =
                 CGFloat(display.physicalHeightInches)
 
+            // macOS x grows rightward like the workspace; macOS y grows downward, the workspace's upward.
             let physicalCenterX =
-                -(pixelX - referenceCenterX) *
+                (pixelX - referenceCenterX) *
                 inchesPerMacUnit
 
             let physicalCenterY =
