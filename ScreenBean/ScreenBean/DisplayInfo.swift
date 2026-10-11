@@ -37,6 +37,16 @@ struct DisplayInfo {
 
     var isPrimary: Bool
 
+    /// Rotation macOS applies to the display: 0, 90, 180 or 270 degrees.
+    /// A portrait display is reported as at least 90 even if macOS says 0.
+    var rotationDegrees: Int = 0
+
+    /// The display this one mirrors, or 0 when it isn't mirroring.
+    var mirrorsDisplayID: CGDirectDisplayID = 0
+
+    /// True when the display is taller than it is wide, as macOS presents it.
+    var isPortrait: Bool { pixelHeight > pixelWidth }
+
     var colorHex: String = DisplayDefaults.colorHex
     var uniformBezel: Bool = true
     var bezelTop: Double = DisplayDefaults.bezelInches
@@ -98,25 +108,36 @@ struct DisplayInfo {
             let mode =
                 CGDisplayCopyDisplayMode(id)
 
-            let widthPx =
+            let modeWidthPx =
                 mode?.pixelWidth ??
                 Int(CGDisplayPixelsWide(id))
 
-            let heightPx =
+            let modeHeightPx =
                 mode?.pixelHeight ??
                 Int(CGDisplayPixelsHigh(id))
 
             let sizeMM =
                 CGDisplayScreenSize(id)
 
-            let widthIn =
+            var widthIn =
                 Double(sizeMM.width) / 25.4
 
-            let heightIn =
+            var heightIn =
                 Double(sizeMM.height) / 25.4
 
-            let origin =
-                CGDisplayBounds(id).origin
+            // CGDisplayBounds is in the rotated, as-seen orientation. Make the pixel
+            // and physical sizes match it so a vertical monitor is taller than wide.
+            let bounds = CGDisplayBounds(id)
+            let portrait = bounds.height > bounds.width
+            var widthPx = modeWidthPx
+            var heightPx = modeHeightPx
+            if widthPx != heightPx, (widthPx > heightPx) == portrait { swap(&widthPx, &heightPx) }
+            if widthIn != heightIn, (widthIn > heightIn) == portrait { swap(&widthIn, &heightIn) }
+
+            let reportedRotation = Int(CGDisplayRotation(id))
+            let rotationDegrees = portrait && reportedRotation % 180 == 0 ? 90 : reportedRotation
+
+            let origin = bounds.origin
 
             var info = DisplayInfo(
                 displayID: id,
@@ -137,9 +158,16 @@ struct DisplayInfo {
                 positionY: Double(origin.y),
                 isPrimary: CGDisplayIsMain(id) != 0
             )
+            info.rotationDegrees = rotationDegrees
+            info.mirrorsDisplayID = CGDisplayMirrorsDisplay(id)
 
             if let saved = DisplayConfigurationStore.shared.configuration(for: info.persistentID) {
                 info.apply(configuration: saved)
+                // Saved sizes may predate the display being rotated.
+                if info.physicalWidthInches != info.physicalHeightInches,
+                   (info.physicalWidthInches > info.physicalHeightInches) != (info.pixelWidth > info.pixelHeight) {
+                    swap(&info.physicalWidthInches, &info.physicalHeightInches)
+                }
             }
             infos.append(info)
         }

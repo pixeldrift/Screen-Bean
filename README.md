@@ -482,7 +482,7 @@ This allows Screen Bean to restore display-specific configuration between launch
 * [x]	Drag displays
 * [x]	Edit physical dimensions
 * [ ]	Display calibration UI
-* [ ]	Detect each display's rotation and mirroring from macOS
+* [x]	Detect each display's rotation and mirroring from macOS
 * [ ]	Rotate display clockwise (90°)
 * [ ]	Rotate display counterclockwise (90°)
 * [ ]	Flip display horizontally (mirror)

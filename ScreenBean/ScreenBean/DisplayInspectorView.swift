@@ -28,6 +28,7 @@ final class DisplayInspectorView: NSView {
     private let resolution = NSTextField(labelWithString: "—")
     private let ppi = NSTextField(labelWithString: "—")
     private let role = NSTextField(labelWithString: "—")
+    private let orientation = NSTextField(labelWithString: "—")
     private var isLocked = false
     private var hasDisplay = false
     private var uniformSection: NSView!
@@ -82,7 +83,7 @@ final class DisplayInspectorView: NSView {
         // Sections.
         let infoSection = stack([
             grid(valueCell("Native Resolution", resolution), valueCell("Pixel Density", ppi)),
-            valueCell("Display Role", role)
+            grid(valueCell("Display Role", role), valueCell("Orientation", orientation))
         ], spacing: 8)
         let dimensions = section("Dimensions & Position", [
             grid(cell("Width", "inches", width), cell("Height", "inches", height)),
@@ -178,7 +179,7 @@ final class DisplayInspectorView: NSView {
             hasDisplay = false
             nickname.stringValue = ""; detected.stringValue = ""
             for input in [width, height, x, y, bezel, top, bottom, left, right] { input.clear() }
-            resolution.stringValue = "—"; ppi.stringValue = "—"; role.stringValue = "—"
+            resolution.stringValue = "—"; ppi.stringValue = "—"; role.stringValue = "—"; orientation.stringValue = "—"
             isLocked = false
             updateLockButton(); applyEnabled()
             return
@@ -201,6 +202,8 @@ final class DisplayInspectorView: NSView {
         showsBezel = d.showBezel
         resolution.stringValue = "\(d.pixelWidth) × \(d.pixelHeight) pixels"; ppi.stringValue = String(format: "%.0f PPI", d.ppi)
         role.stringValue = d.isPrimary ? "Primary display" : "Secondary display"
+        orientation.stringValue = d.isPortrait ? "Portrait (rotated \(d.rotationDegrees)°)" : (d.rotationDegrees == 0 ? "Landscape" : "Landscape (rotated \(d.rotationDegrees)°)")
+        if d.mirrorsDisplayID != 0 { role.stringValue += ", mirroring \(DisplayInfo.displayName(for: d.mirrorsDisplayID))" }
         updateLockButton(); applyEnabled()
     }
 
