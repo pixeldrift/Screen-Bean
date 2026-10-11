@@ -2,7 +2,8 @@
 //  SettingsPanel.swift
 //  ScreenBean
 //
-//  The sidebar's Settings section: identify mode, how measurements and bezels are shown.
+//  The sidebar's Settings section: identify mode, how measurements and bezels are
+//  shown, which guides are visible, and snapping.
 //
 
 import Cocoa
@@ -11,14 +12,18 @@ final class SettingsPanel: NSView {
     let identifyButton = NSButton(title: "Identify Displays", target: nil, action: nil)
     let excludePrimaryCheckbox = NSButton(checkboxWithTitle: "Exclude primary", target: nil, action: nil)
 
-    private let fractionsSwitch = NSSwitch()
-    private let guidesSwitch = NSSwitch()
+    private let fractionsCheckbox = NSButton(checkboxWithTitle: "Show measurements as fractions", target: nil, action: nil)
+    private let bezelControl = NSSegmentedControl(labels: ["All", "Per display", "None"], trackingMode: .selectOne, target: nil, action: nil)
     private let edgeGuidesCheckbox = NSButton(checkboxWithTitle: "Edge guides", target: nil, action: nil)
-    private let edgeScopeControl = NSSegmentedControl(labels: ["All displays", "Selected"], trackingMode: .selectOne, target: nil, action: nil)
-    private let onScreensCheckbox = NSButton(checkboxWithTitle: "Show on real screens", target: nil, action: nil)
-    private let gapMeasurementsCheckbox = NSButton(checkboxWithTitle: "Gap measurements", target: nil, action: nil)
+    private let edgeScopeControl = NSSegmentedControl(labels: ["All", "Selected"], trackingMode: .selectOne, target: nil, action: nil)
+    private let gapGuidesCheckbox = NSButton(checkboxWithTitle: "Gap guides", target: nil, action: nil)
+    private let customGuidesCheckbox = NSButton(checkboxWithTitle: "Custom guides", target: nil, action: nil)
+    private let snapGuidesCheckbox = NSButton(checkboxWithTitle: "Snap to guides", target: nil, action: nil)
+    private let snapBezelsCheckbox = NSButton(checkboxWithTitle: "Snap to bezels", target: nil, action: nil)
     private let clearGuidesButton = NSButton(title: "Clear Custom Guides", target: nil, action: nil)
-    private let bezelControl = NSSegmentedControl(labels: ["Per display", "Show all", "Hide all"], trackingMode: .selectOne, target: nil, action: nil)
+
+    /// The bezel control's segments, in the order shown.
+    private let bezelChoices: [BezelVisibility] = [.showAll, .perDisplay, .hideAll]
 
     override init(frame: NSRect) { super.init(frame: frame); build() }
     required init?(coder: NSCoder) { super.init(coder: coder); build() }
@@ -32,66 +37,55 @@ final class SettingsPanel: NSView {
         identifyButton.bezelStyle = .rounded
         identifyButton.toolTip = "Fill each real screen with its letter, name and size. Ends on any click or key press."
         excludePrimaryCheckbox.toolTip = "Leave the primary display clear while identifying."
-        let identifyRow = NSStackView(views: [identifyButton, excludePrimaryCheckbox])
-        identifyRow.spacing = 12
-        identifyRow.alignment = .centerY
+        let identify = vertical([identifyButton, excludePrimaryCheckbox], spacing: 6)
 
         // Measurements.
-        fractionsSwitch.target = self; fractionsSwitch.action = #selector(fractionsToggled)
-        fractionsSwitch.state = MeasurementFormat.useFractions ? .on : .off
-        let fractionsLabel = NSTextField(labelWithString: "Show as Fractions")
-        fractionsLabel.font = .systemFont(ofSize: 12)
-        let fractionsRow = NSStackView(views: [fractionsSwitch, fractionsLabel])
-        fractionsRow.spacing = 8
-        fractionsRow.alignment = .centerY
+        fractionsCheckbox.target = self; fractionsCheckbox.action = #selector(fractionsToggled)
         let fractionsNote = NSTextField(labelWithString: "Fractions always accepted as input")
         fractionsNote.font = .systemFont(ofSize: 10)
         fractionsNote.textColor = .tertiaryLabelColor
-        let fractions = NSStackView(views: [fractionsRow, fractionsNote])
-        fractions.orientation = .vertical; fractions.alignment = .leading; fractions.spacing = 2
-        NotificationCenter.default.addObserver(forName: MeasurementFormat.didChange, object: nil, queue: .main) { [weak self] _ in
-            self?.fractionsSwitch.state = MeasurementFormat.useFractions ? .on : .off
-        }
+        let fractions = vertical([fractionsCheckbox, fractionsNote], spacing: 2)
+        syncFractions()
+        NotificationCenter.default.addObserver(forName: MeasurementFormat.didChange, object: nil, queue: .main) { [weak self] _ in self?.syncFractions() }
 
         // Bezels: a global override over each display's own Show bezel setting.
-        let bezelLabel = NSTextField(labelWithString: "Bezels")
+        let bezelLabel = NSTextField(labelWithString: "Show Display Bezels")
         bezelLabel.font = .systemFont(ofSize: 12)
-        bezelControl.selectedSegment = BezelVisibility.current.rawValue
+        bezelControl.selectedSegment = bezelChoices.firstIndex(of: BezelVisibility.current) ?? 1
         bezelControl.target = self; bezelControl.action = #selector(bezelChanged)
         bezelControl.toolTip = "Show or hide every display's bezel, overriding each display's own setting."
-        let bezelRow = NSStackView(views: [bezelLabel, bezelControl])
-        bezelRow.spacing = 8
-        bezelRow.alignment = .centerY
+        let bezels = vertical([bezelLabel, bezelControl], spacing: 4)
 
-        // Guides: toggles live here; they are created by dragging out of the rulers.
+        // Guides, in the order Edge, Gap, Custom.
         let guidesLabel = NSTextField(labelWithString: "Guides")
-        guidesLabel.font = .systemFont(ofSize: 12)
-        guidesSwitch.target = self; guidesSwitch.action = #selector(guidesToggled)
-        guidesSwitch.toolTip = "Show or hide all guides. Drag from a ruler to add one; drag it back to delete it."
-        let guidesRow = NSStackView(views: [guidesSwitch, guidesLabel])
-        guidesRow.spacing = 8
-        guidesRow.alignment = .centerY
+        guidesLabel.font = .boldSystemFont(ofSize: 11)
+        guidesLabel.textColor = .secondaryLabelColor
         edgeGuidesCheckbox.target = self; edgeGuidesCheckbox.action = #selector(edgeGuidesToggled)
-        edgeGuidesCheckbox.toolTip = "Continue each display's edges across the whole canvas."
+        edgeGuidesCheckbox.toolTip = "Continue display edges across the canvas and onto the real screens."
         edgeScopeControl.target = self; edgeScopeControl.action = #selector(edgeScopeChanged)
         edgeScopeControl.controlSize = .small
         let edgeRow = NSStackView(views: [edgeGuidesCheckbox, edgeScopeControl])
         edgeRow.spacing = 8
         edgeRow.alignment = .centerY
-        onScreensCheckbox.target = self; onScreensCheckbox.action = #selector(onScreensToggled)
-        onScreensCheckbox.toolTip = "Draw the guides on the real displays so they line up across screens in space."
-        gapMeasurementsCheckbox.target = self; gapMeasurementsCheckbox.action = #selector(gapMeasurementsToggled)
-        gapMeasurementsCheckbox.toolTip = "Show the distance across empty space between displays. Drag an arrow to move a display or slide it along the gap."
+        gapGuidesCheckbox.target = self; gapGuidesCheckbox.action = #selector(gapGuidesToggled)
+        gapGuidesCheckbox.toolTip = "Show the distance across empty space between displays. Drag an arrow to move a display or slide it along the gap."
+        customGuidesCheckbox.target = self; customGuidesCheckbox.action = #selector(customGuidesToggled)
+        customGuidesCheckbox.toolTip = "Guides dragged out of the rulers. They show on the real screens too."
         clearGuidesButton.bezelStyle = .rounded
         clearGuidesButton.controlSize = .small
         clearGuidesButton.target = self; clearGuidesButton.action = #selector(clearGuides)
-        let guides = NSStackView(views: [guidesRow, edgeRow, onScreensCheckbox, gapMeasurementsCheckbox, clearGuidesButton])
-        guides.orientation = .vertical; guides.alignment = .leading; guides.spacing = 6
+
+        // Snapping.
+        snapGuidesCheckbox.target = self; snapGuidesCheckbox.action = #selector(snapGuidesToggled)
+        snapGuidesCheckbox.toolTip = "Dragged display and image edges snap to guides. Hold Option to snap off for one drag."
+        snapBezelsCheckbox.target = self; snapBezelsCheckbox.action = #selector(snapBezelsToggled)
+        snapBezelsCheckbox.toolTip = "Dragged displays snap so their bezels touch their neighbors'. Hold Option to snap off for one drag."
+
+        let guides = vertical([guidesLabel, edgeRow, gapGuidesCheckbox, customGuidesCheckbox, snapGuidesCheckbox, snapBezelsCheckbox, clearGuidesButton], spacing: 6)
         NotificationCenter.default.addObserver(forName: GuideSettings.didChange, object: nil, queue: .main) { [weak self] _ in self?.syncGuideControls() }
         syncGuideControls()
 
-        let stack = NSStackView(views: [title, identifyRow, fractions, bezelRow, guides])
-        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 10
+        let stack = vertical([title, identify, fractions, bezels, guides], spacing: 12)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -102,26 +96,31 @@ final class SettingsPanel: NSView {
         ])
     }
 
-    private func syncGuideControls() {
-        guidesSwitch.state = GuideSettings.showGuides ? .on : .off
-        edgeGuidesCheckbox.state = GuideSettings.showEdgeGuides ? .on : .off
-        edgeScopeControl.selectedSegment = GuideSettings.edgeScope.rawValue
-        onScreensCheckbox.state = GuideSettings.showOnScreens ? .on : .off
-        gapMeasurementsCheckbox.state = GuideSettings.showGapMeasurements ? .on : .off
-        let enabled = GuideSettings.showGuides
-        edgeGuidesCheckbox.isEnabled = enabled
-        edgeScopeControl.isEnabled = enabled && GuideSettings.showEdgeGuides
-        onScreensCheckbox.isEnabled = enabled
+    private func vertical(_ views: [NSView], spacing: CGFloat) -> NSStackView {
+        let stack = NSStackView(views: views)
+        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = spacing
+        return stack
     }
 
-    @objc private func guidesToggled() { GuideSettings.showGuides = guidesSwitch.state == .on }
+    private func syncFractions() { fractionsCheckbox.state = MeasurementFormat.useFractions ? .on : .off }
+
+    private func syncGuideControls() {
+        edgeGuidesCheckbox.state = GuideSettings.showEdgeGuides ? .on : .off
+        edgeScopeControl.selectedSegment = GuideSettings.edgeScope.rawValue
+        edgeScopeControl.isEnabled = GuideSettings.showEdgeGuides
+        gapGuidesCheckbox.state = GuideSettings.showGapMeasurements ? .on : .off
+        customGuidesCheckbox.state = GuideSettings.showCustomGuides ? .on : .off
+        snapGuidesCheckbox.state = GuideSettings.snapToGuides ? .on : .off
+        snapBezelsCheckbox.state = GuideSettings.snapToBezels ? .on : .off
+    }
+
+    @objc private func fractionsToggled() { MeasurementFormat.useFractions = fractionsCheckbox.state == .on }
+    @objc private func bezelChanged() { BezelVisibility.current = bezelChoices[min(max(bezelControl.selectedSegment, 0), bezelChoices.count - 1)] }
     @objc private func edgeGuidesToggled() { GuideSettings.showEdgeGuides = edgeGuidesCheckbox.state == .on }
     @objc private func edgeScopeChanged() { GuideSettings.edgeScope = EdgeGuideScope(rawValue: edgeScopeControl.selectedSegment) ?? .allDisplays }
-    @objc private func onScreensToggled() { GuideSettings.showOnScreens = onScreensCheckbox.state == .on }
-    @objc private func gapMeasurementsToggled() { GuideSettings.showGapMeasurements = gapMeasurementsCheckbox.state == .on }
+    @objc private func gapGuidesToggled() { GuideSettings.showGapMeasurements = gapGuidesCheckbox.state == .on }
+    @objc private func customGuidesToggled() { GuideSettings.showCustomGuides = customGuidesCheckbox.state == .on }
+    @objc private func snapGuidesToggled() { GuideSettings.snapToGuides = snapGuidesCheckbox.state == .on }
+    @objc private func snapBezelsToggled() { GuideSettings.snapToBezels = snapBezelsCheckbox.state == .on }
     @objc private func clearGuides() { GuideStore.shared.removeAll() }
-
-    @objc private func fractionsToggled() { MeasurementFormat.useFractions = fractionsSwitch.state == .on }
-
-    @objc private func bezelChanged() { BezelVisibility.current = BezelVisibility(rawValue: bezelControl.selectedSegment) ?? .perDisplay }
 }

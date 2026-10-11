@@ -546,6 +546,8 @@ macOS has no public API for changing a display's rotation, so these edit Screen 
 * [ ]	Coordinate interpolation
 * [ ]	Custom mouse transition paths
 * [ ]	Physical-topology-based transitions
+* [x]	Snap to guides and to bezels while dragging (Option held turns snapping off)
+* [ ]	Audit modifier keys and hotkeys for consistency (constrain, scale from center, keep proportions, snapping, zoom)
 * [ ]	Snapping and modifier-key controls
 
 ### Phase 6 — Advanced Calibration

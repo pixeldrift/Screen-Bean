@@ -29,6 +29,8 @@ final class ImageLayerPanel: NSView {
     private let readout = NSTextField(labelWithString: "")
     private let x = NumberInput(), y = NumberInput(), width = NumberInput(), height = NumberInput()
     private var transformSection: NSView?
+    /// Controls that only make sense once there is an image to apply them to.
+    private var imageOnlyViews: [NSView] = []
     private let lockButton = NSButton()
     private var isLocked = false
     private let clipCheckbox = NSButton(checkboxWithTitle: "Preview clipped to displays", target: nil, action: nil)
@@ -61,7 +63,7 @@ final class ImageLayerPanel: NSView {
         lockButton.isEnabled = image != nil
         slider.doubleValue = blend
         updateReadout()
-        updateTransformVisibility()
+        updateImageControlsVisibility()
     }
 
     /// Shows the lock state without notifying `onLockChanged`. A locked image's position fields are read-only.
@@ -141,17 +143,20 @@ final class ImageLayerPanel: NSView {
         let header = NSStackView(views: [title, NSView(), lockButton])
         header.distribution = .fill
 
-        var views: [NSView] = [header, dropZone, buttons]
+        // Image first, then how it blends, then (for images) where it sits and how big it is.
+        var views: [NSView] = [header, dropZone, buttons, heading, sliderHolder, ends, readout]
+        imageOnlyViews = [heading, sliderHolder, ends, readout, lockButton]
+        if showsClipToggle {
+            clipCheckbox.target = self; clipCheckbox.action = #selector(clipToggled)
+            views.append(clipCheckbox)
+            imageOnlyViews.append(clipCheckbox)
+        }
         if showsTransform {
             let section = buildTransformSection()
             transformSection = section
             views.append(section)
+            imageOnlyViews.append(section)
         }
-        if showsClipToggle {
-            clipCheckbox.target = self; clipCheckbox.action = #selector(clipToggled)
-            views.append(clipCheckbox)
-        }
-        views += [heading, sliderHolder, ends, readout]
         let stack = NSStackView(views: views)
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -166,7 +171,7 @@ final class ImageLayerPanel: NSView {
             stack.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
         updateReadout()
-        updateTransformVisibility()
+        updateImageControlsVisibility()
     }
 
     private func buildTransformSection() -> NSView {
@@ -196,7 +201,10 @@ final class ImageLayerPanel: NSView {
         onFrameChanged?(frame)
     }
 
-    private func updateTransformVisibility() { transformSection?.isHidden = dropZone.image == nil }
+    private func updateImageControlsVisibility() {
+        let hasImage = dropZone.image != nil
+        for view in imageOnlyViews { view.isHidden = !hasImage }
+    }
 
     // MARK: - Actions
 
@@ -228,7 +236,7 @@ final class ImageLayerPanel: NSView {
         // Make a freshly chosen image visible, sitting below the displays.
         if image != nil, slider.doubleValue == 0 { slider.doubleValue = -1; onBlendChanged?(-1) }
         updateReadout()
-        updateTransformVisibility()
+        updateImageControlsVisibility()
     }
 
     @objc private func lockToggled() {
@@ -247,7 +255,7 @@ final class ImageLayerPanel: NSView {
 
     private func updateReadout() {
         let blend = ImageLayerBlend(value: slider.doubleValue)
-        if dropZone.image == nil { readout.stringValue = "No image chosen" }
+        if dropZone.image == nil { readout.stringValue = "" }
         else if blend.opacity == 0 { readout.stringValue = "Hidden" }
         else { readout.stringValue = "\(Int((blend.opacity * 100).rounded()))% opacity, \(blend.aboveDisplays ? "above" : "below") displays" }
     }

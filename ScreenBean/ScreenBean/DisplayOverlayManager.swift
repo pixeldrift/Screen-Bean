@@ -85,7 +85,7 @@ final class DisplayOverlayManager {
             let showsIdentity = identifyEnabled && !(excludePrimary && identity.isPrimary)
             let showsBorder = identity.id == selectedID
             let preview = previewImages?[identity.id]
-            let showsGuides = GuideSettings.showGuides && GuideSettings.showOnScreens && !guides.isEmpty && panels[identity.id] != nil
+            let showsGuides = !guides.isEmpty && panels[identity.id] != nil
             guard showsIdentity || showsBorder || preview != nil || showsGuides, let screen = NSScreen.screen(forDisplayID: identity.id) else { continue }
             wanted.insert(identity.id)
             let window = windows[identity.id] ?? makeWindow()
@@ -262,10 +262,13 @@ private final class OverlayView: NSView {
             (identity.resolutionText, attributes(max(base * 0.026, 12), .regular)),
             (identity.sizeText, attributes(max(base * 0.026, 12), .regular))
         ]
-        var top = bounds.height / 4
-        for (text, attrs) in lines {
-            let size = (text as NSString).size(withAttributes: attrs)
-            (text as NSString).draw(in: CGRect(x: bounds.minX + 16, y: top - size.height, width: bounds.width - 32, height: size.height), withAttributes: attrs)
+        // Centered between the bottom of the circle and the bottom of the screen.
+        let sizes = lines.map { ($0.0 as NSString).size(withAttributes: $0.1) }
+        let blockHeight = sizes.reduce(0) { $0 + $1.height }
+        var top = (center.y - diameter / 2) / 2 + blockHeight / 2
+        for (index, line) in lines.enumerated() {
+            let size = sizes[index]
+            (line.0 as NSString).draw(in: CGRect(x: bounds.minX + 16, y: top - size.height, width: bounds.width - 32, height: size.height), withAttributes: line.1)
             top -= size.height
         }
     }

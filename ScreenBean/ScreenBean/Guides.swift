@@ -53,21 +53,34 @@ enum GuideSettings {
         NotificationCenter.default.post(name: didChange, object: nil)
     }
 
-    /// Master switch for every guide.
-    static var showGuides: Bool {
-        get { bool("ScreenBean.ShowGuides", default: true) }
-        set { set(newValue, forKey: "ScreenBean.ShowGuides") }
-    }
-
-    /// Guides continuing the displays' edges.
+    /// Guides continuing the displays' edges, in the workspace and on the real screens.
     static var showEdgeGuides: Bool {
         get { bool("ScreenBean.ShowEdgeGuides", default: true) }
         set { set(newValue, forKey: "ScreenBean.ShowEdgeGuides") }
     }
 
+    /// The guides dragged out of the rulers.
+    static var showCustomGuides: Bool {
+        get { bool("ScreenBean.ShowCustomGuides", default: true) }
+        set { set(newValue, forKey: "ScreenBean.ShowCustomGuides") }
+    }
+
+    /// Which displays contribute edge guides.
     static var edgeScope: EdgeGuideScope {
         get { EdgeGuideScope(rawValue: UserDefaults.standard.integer(forKey: "ScreenBean.EdgeGuideScope")) ?? .allDisplays }
         set { set(newValue.rawValue, forKey: "ScreenBean.EdgeGuideScope") }
+    }
+
+    /// Dragged edges snap to guides.
+    static var snapToGuides: Bool {
+        get { bool("ScreenBean.SnapToGuides", default: true) }
+        set { set(newValue, forKey: "ScreenBean.SnapToGuides") }
+    }
+
+    /// Dragged displays snap bezel to bezel against their neighbors.
+    static var snapToBezels: Bool {
+        get { bool("ScreenBean.SnapToBezels", default: true) }
+        set { set(newValue, forKey: "ScreenBean.SnapToBezels") }
     }
 
     /// Measurements across the gaps between displays.
@@ -76,11 +89,6 @@ enum GuideSettings {
         set { set(newValue, forKey: "ScreenBean.ShowGapMeasurements") }
     }
 
-    /// Also draw the guides on the real screens.
-    static var showOnScreens: Bool {
-        get { bool("ScreenBean.ShowGuidesOnScreens", default: false) }
-        set { set(newValue, forKey: "ScreenBean.ShowGuidesOnScreens") }
-    }
 }
 
 /// The user's custom guides, saved between launches.

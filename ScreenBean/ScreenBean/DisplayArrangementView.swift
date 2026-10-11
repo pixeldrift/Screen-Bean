@@ -98,12 +98,19 @@ class DisplayArrangementView: NSView {
     /// A gap measurement being dragged, and which display's side of it was grabbed.
     private struct GapDrag {
         let measurement: GapMeasurement
-        let grabbed: CGDirectDisplayID
+        let zone: GapZone
         let startPoint: CGPoint
-        let startRect: CGRect
+        let startRect: CGRect?
     }
     private var gapDrag: GapDrag?
     private var hoverGapKey: String?
+    private var hoverGapZone: GapZone?
+
+    /// Parts of a gap measurement: the two ends grab the displays beside them,
+    /// and the middle only slides the arrow along the gap.
+    private enum GapZone {
+        case first, middle, second
+    }
     /// Shift-dragging the background zooms around the point where the drag began.
     private var isZoomDragging = false
     private var zoomDragStart = CGPoint.zero
@@ -641,14 +648,15 @@ class DisplayArrangementView: NSView {
         if let info { lines.append(("\(info.pixelWidth) × \(info.pixelHeight) px", attributes(detailSize, weight: .regular))) }
         lines.append(("\(MeasurementFormat.string(Double(display.width))) × \(MeasurementFormat.string(Double(display.height))) in", attributes(detailSize, weight: .regular)))
 
-        let box = CGRect(x: rect.minX + 8, y: rect.minY + 6, width: max(rect.width - 16, 1), height: rect.height / 4 - 6)
+        // The caption is centered between the bottom of the circle and the bottom of the display.
+        let box = CGRect(x: rect.minX + 8, y: rect.minY + 6, width: max(rect.width - 16, 1), height: max(circle.minY - rect.minY - 12, 1))
         func height(of line: (text: String, attributes: [NSAttributedString.Key: Any])) -> CGFloat {
             ceil((line.text as NSString).boundingRect(with: CGSize(width: box.width, height: .greatestFiniteMagnitude), options: .usesLineFragmentOrigin, attributes: line.attributes).height)
         }
         while lines.count > 1, lines.reduce(0, { $0 + height(of: $1) }) > box.height { lines.removeLast() }
         guard let first = lines.first, height(of: first) <= box.height else { return }
 
-        var top = box.maxY
+        var top = box.midY + lines.reduce(0, { $0 + height(of: $1) }) / 2
         for line in lines {
             let lineHeight = height(of: line)
             (line.text as NSString).draw(
@@ -880,14 +888,17 @@ class DisplayArrangementView: NSView {
             needsDisplay = true
         }
         let gap = guide == nil && rulerAxis(at: point) == nil ? gapMeasurement(at: point) : nil
-        if gap?.measurement.key != hoverGapKey {
+        if gap?.measurement.key != hoverGapKey || gap?.zone != hoverGapZone {
             hoverGapKey = gap?.measurement.key
+            hoverGapZone = gap?.zone
             needsDisplay = true
         }
         if let guide {
             (guide.axis == .horizontal ? NSCursor.resizeUpDown : NSCursor.resizeLeftRight).set()
         } else if let gap {
-            (gap.measurement.direction == .horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).set()
+            // The ends move displays across the gap; the middle slides along it.
+            let across = gap.measurement.direction == .horizontal
+            ((across == (gap.zone != .middle)) ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).set()
         } else if let axis = rulerAxis(at: point) {
             (axis == .horizontal ? NSCursor.resizeUpDown : NSCursor.resizeLeftRight).set()
         } else {
@@ -898,7 +909,7 @@ class DisplayArrangementView: NSView {
     override func mouseExited(with event: NSEvent) {
         if hoverTarget != nil { hoverTarget = nil; needsDisplay = true }
         if hoverGuideID != nil { hoverGuideID = nil; needsDisplay = true }
-        if hoverGapKey != nil { hoverGapKey = nil; needsDisplay = true }
+        if hoverGapKey != nil { hoverGapKey = nil; hoverGapZone = nil; needsDisplay = true }
         NSCursor.arrow.set()
     }
 
@@ -949,7 +960,7 @@ class DisplayArrangementView: NSView {
 
     @objc private func addGuideFromMenu(_ sender: NSMenuItem) {
         guard let payload = sender.representedObject as? GuideMenuPayload, let axis = payload.axis else { return }
-        GuideSettings.showGuides = true
+        GuideSettings.showCustomGuides = true
         GuideStore.shared.add(Guide(axis: axis, position: payload.position))
         GuideStore.shared.save()
     }
@@ -959,7 +970,6 @@ class DisplayArrangementView: NSView {
     // MARK: - Guides
     /// Every guide to draw: edge guides from the displays, then custom ones.
     func resolvedGuides() -> [ResolvedGuide] {
-        guard GuideSettings.showGuides else { return [] }
         var result: [ResolvedGuide] = []
         if GuideSettings.showEdgeGuides {
             let sources = GuideSettings.edgeScope == .selectedDisplay
@@ -980,8 +990,10 @@ class DisplayArrangementView: NSView {
                 }
             }
         }
-        for guide in GuideStore.shared.guides {
-            result.append(ResolvedGuide(axis: guide.axis, position: guide.position, color: .systemPink, customID: guide.id))
+        if GuideSettings.showCustomGuides {
+            for guide in GuideStore.shared.guides {
+                result.append(ResolvedGuide(axis: guide.axis, position: guide.position, color: .systemPink, customID: guide.id))
+            }
         }
         return result
     }
@@ -1010,7 +1022,7 @@ class DisplayArrangementView: NSView {
 
     /// The custom guide within a few points of `point`.
     private func customGuide(at point: CGPoint) -> Guide? {
-        guard GuideSettings.showGuides, !isOverRuler(point) else { return nil }
+        guard GuideSettings.showCustomGuides, !isOverRuler(point) else { return nil }
         return GuideStore.shared.guides.reversed().first { guide in
             switch guide.axis {
             case .horizontal: return abs(point.y - (CGFloat(guide.position) * pointsPerInch + viewOffset.y)) <= 4
@@ -1235,8 +1247,8 @@ class DisplayArrangementView: NSView {
         }
     }
 
-    /// The measurement under `point` and the display on the side of the arrow that was grabbed.
-    private func gapMeasurement(at point: CGPoint) -> (measurement: GapMeasurement, grabbed: CGDirectDisplayID)? {
+    /// The measurement under `point` and which part of it: the quarter beside each display, or the middle.
+    private func gapMeasurement(at point: CGPoint) -> (measurement: GapMeasurement, zone: GapZone)? {
         guard !isOverRuler(point) else { return nil }
         for m in gapMeasurements() {
             let (p0, p1) = gapEndpoints(m)
@@ -1245,19 +1257,28 @@ class DisplayArrangementView: NSView {
             case .horizontal: band = CGRect(x: min(p0.x, p1.x) - 3, y: p0.y - 8, width: abs(p1.x - p0.x) + 6, height: 16)
             case .vertical: band = CGRect(x: p0.x - 8, y: min(p0.y, p1.y) - 3, width: 16, height: abs(p1.y - p0.y) + 6)
             }
-            guard band.contains(point) || gapLabelRect(m).contains(point) else { continue }
-            // The half nearer a display belongs to that display.
-            let nearFirst = m.direction == .horizontal ? point.x < (p0.x + p1.x) / 2 : point.y < (p0.y + p1.y) / 2
-            return (m, nearFirst ? m.first : m.second)
+            let onLabel = gapLabelRect(m).contains(point)
+            guard band.contains(point) || onLabel else { continue }
+            // How far along the arrow the pointer is, from the first display's end (0) to the second's (1).
+            let along: CGFloat
+            switch m.direction {
+            case .horizontal: along = p1.x == p0.x ? 0.5 : (point.x - p0.x) / (p1.x - p0.x)
+            case .vertical: along = p1.y == p0.y ? 0.5 : (point.y - p0.y) / (p1.y - p0.y)
+            }
+            let zone: GapZone = onLabel ? .middle : (along < 0.25 ? .first : (along > 0.75 ? .second : .middle))
+            return (m, zone)
         }
         return nil
     }
 
-    /// Dragging along the gap slides the measurement; dragging across it moves the grabbed display.
-    private func dragGap(_ drag: GapDrag, to point: CGPoint) {
+    /// Dragging along the gap slides the measurement; dragging across it, from either end, moves
+    /// that end's display. The middle of the arrow only slides.
+    private func dragGap(_ drag: GapDrag, to point: CGPoint, constrain: Bool) {
         let m = drag.measurement
-        let dx = (point.x - drag.startPoint.x) / pointsPerInch
-        let dy = (point.y - drag.startPoint.y) / pointsPerInch
+        var dx = (point.x - drag.startPoint.x) / pointsPerInch
+        var dy = (point.y - drag.startPoint.y) / pointsPerInch
+        // Shift keeps the drag to one direction: along the gap or across it.
+        if constrain { if abs(dx) > abs(dy) { dy = 0 } else { dx = 0 } }
         let across = m.direction == .horizontal ? dx : dy
         let along = m.direction == .horizontal ? dy : dx
 
@@ -1265,62 +1286,174 @@ class DisplayArrangementView: NSView {
         let span = m.overlapHigh - m.overlapLow
         if span > 0 {
             let startPosition = (m.direction == .horizontal ? m.start.y : m.start.x) - m.overlapLow
-            let placement = Double((startPosition + along) / span)
-            GapPlacementStore.setPlacement(placement, for: m.key)
+            GapPlacementStore.setPlacement(Double((startPosition + along) / span), for: m.key)
         }
 
-        // Move the grabbed display without letting the displays overlap or the gap pass zero.
-        guard isEditable(.display(drag.grabbed)) else { needsDisplay = true; return }
-        let movesFirst = drag.grabbed == m.first
-        let limited = movesFirst ? min(across, m.gap) : max(across, -m.gap)
+        // Move the display at the grabbed end without letting the displays overlap or the gap pass zero.
+        guard drag.zone != .middle, let startRect = drag.startRect else { needsDisplay = true; return }
+        let grabbed = drag.zone == .first ? m.first : m.second
+        guard isEditable(.display(grabbed)) else { needsDisplay = true; return }
+        let limited = drag.zone == .first ? min(across, m.gap) : max(across, -m.gap)
         let offset = m.direction == .horizontal ? CGSize(width: limited, height: 0) : CGSize(width: 0, height: limited)
-        apply(drag.startRect.offsetBy(dx: offset.width, dy: offset.height), to: .display(drag.grabbed))
+        apply(startRect.offsetBy(dx: offset.width, dy: offset.height), to: .display(grabbed))
         needsDisplay = true
     }
 
+    private func displayColor(_ id: CGDirectDisplayID) -> NSColor {
+        physicalLayout.displays.first(where: { $0.id == id }).map { NSColor(displayHex: $0.colorHex) } ?? .systemGray
+    }
+
+    /// Gap arrows are gray. The part under the mouse takes the color of the display it would move.
     private func drawGapMeasurements() {
         for m in gapMeasurements() {
             let (p0, p1) = gapEndpoints(m)
-            let isActive = m.key == hoverGapKey || m.key == gapDrag?.measurement.key
-            let color = isActive ? NSColor.controlAccentColor : NSColor.systemOrange
-            let capLength: CGFloat = 16
-            let arrow: CGFloat = 6
-
-            // Bars across both ends, a shaft between them, and open arrowheads pointing at the bars.
-            let path = NSBezierPath()
-            path.lineWidth = isActive ? 2.5 : 2
-            path.lineCapStyle = .round
-            switch m.direction {
-            case .horizontal:
-                for p in [p0, p1] { path.move(to: CGPoint(x: p.x, y: p.y - capLength / 2)); path.line(to: CGPoint(x: p.x, y: p.y + capLength / 2)) }
-                path.move(to: p0); path.line(to: p1)
-                if abs(p1.x - p0.x) > arrow * 3 {
-                    let left = p0.x < p1.x ? p0 : p1, right = p0.x < p1.x ? p1 : p0
-                    path.move(to: CGPoint(x: left.x + arrow, y: left.y + arrow)); path.line(to: left); path.line(to: CGPoint(x: left.x + arrow, y: left.y - arrow))
-                    path.move(to: CGPoint(x: right.x - arrow, y: right.y + arrow)); path.line(to: right); path.line(to: CGPoint(x: right.x - arrow, y: right.y - arrow))
-                }
-            case .vertical:
-                for p in [p0, p1] { path.move(to: CGPoint(x: p.x - capLength / 2, y: p.y)); path.line(to: CGPoint(x: p.x + capLength / 2, y: p.y)) }
-                path.move(to: p0); path.line(to: p1)
-                if abs(p1.y - p0.y) > arrow * 3 {
-                    let low = p0.y < p1.y ? p0 : p1, high = p0.y < p1.y ? p1 : p0
-                    path.move(to: CGPoint(x: low.x - arrow, y: low.y + arrow)); path.line(to: low); path.line(to: CGPoint(x: low.x + arrow, y: low.y + arrow))
-                    path.move(to: CGPoint(x: high.x - arrow, y: high.y - arrow)); path.line(to: high); path.line(to: CGPoint(x: high.x + arrow, y: high.y - arrow))
+            var activeZone: GapZone?
+            if let drag = gapDrag { activeZone = drag.measurement.key == m.key ? drag.zone : nil }
+            else if m.key == hoverGapKey { activeZone = hoverGapZone }
+            let gray = NSColor.systemGray
+            func color(for zone: GapZone) -> NSColor {
+                guard activeZone == zone else { return gray }
+                switch zone {
+                case .first: return displayColor(m.first)
+                case .second: return displayColor(m.second)
+                case .middle: return NSColor.controlAccentColor
                 }
             }
-            // A dark edge keeps the arrow readable on any background.
-            NSColor.black.withAlphaComponent(0.4).setStroke()
-            let outline = path.copy() as! NSBezierPath
-            outline.lineWidth = path.lineWidth + 2
-            outline.stroke()
-            color.setStroke()
-            path.stroke()
+            let capLength: CGFloat = 16
+            let arrow: CGFloat = 6
+            func lerp(_ t: CGFloat) -> CGPoint { CGPoint(x: p0.x + (p1.x - p0.x) * t, y: p0.y + (p1.y - p0.y) * t) }
+            let quarter0 = lerp(0.25), quarter1 = lerp(0.75)
+
+            // One path per zone so each can be colored on its own: end bar and arrowhead, then shaft.
+            func endPath(at end: CGPoint, toward inner: CGPoint) -> NSBezierPath {
+                let path = NSBezierPath()
+                path.lineCapStyle = .round
+                switch m.direction {
+                case .horizontal:
+                    path.move(to: CGPoint(x: end.x, y: end.y - capLength / 2)); path.line(to: CGPoint(x: end.x, y: end.y + capLength / 2))
+                    path.move(to: end); path.line(to: inner)
+                    if abs(p1.x - p0.x) > arrow * 3 {
+                        let step = end.x < inner.x ? arrow : -arrow
+                        path.move(to: CGPoint(x: end.x + step, y: end.y + arrow)); path.line(to: end); path.line(to: CGPoint(x: end.x + step, y: end.y - arrow))
+                    }
+                case .vertical:
+                    path.move(to: CGPoint(x: end.x - capLength / 2, y: end.y)); path.line(to: CGPoint(x: end.x + capLength / 2, y: end.y))
+                    path.move(to: end); path.line(to: inner)
+                    if abs(p1.y - p0.y) > arrow * 3 {
+                        let step = end.y < inner.y ? arrow : -arrow
+                        path.move(to: CGPoint(x: end.x + arrow, y: end.y + step)); path.line(to: end); path.line(to: CGPoint(x: end.x - arrow, y: end.y + step))
+                    }
+                }
+                return path
+            }
+            let middle = NSBezierPath()
+            middle.lineCapStyle = .round
+            middle.move(to: quarter0); middle.line(to: quarter1)
+            let parts: [(NSBezierPath, NSColor, GapZone)] = [
+                (endPath(at: p0, toward: quarter0), color(for: .first), .first),
+                (middle, color(for: .middle), .middle),
+                (endPath(at: p1, toward: quarter1), color(for: .second), .second)
+            ]
+            for (path, stroke, zone) in parts {
+                let isActive = activeZone == zone
+                // A dark edge keeps the arrow readable on any background.
+                let outline = path.copy() as! NSBezierPath
+                outline.lineWidth = (isActive ? 3 : 2.25) + 2
+                NSColor.black.withAlphaComponent(0.4).setStroke()
+                outline.stroke()
+                path.lineWidth = isActive ? 3 : 2.25
+                stroke.setStroke()
+                path.stroke()
+            }
 
             let label = gapLabelRect(m)
-            color.withAlphaComponent(0.92).setFill()
+            (activeZone == .middle ? NSColor.controlAccentColor : gray).withAlphaComponent(0.92).setFill()
             NSBezierPath(roundedRect: label, xRadius: 5, yRadius: 5).fill()
             gapLabel(m).draw(at: CGPoint(x: label.minX + 6, y: label.minY + 2))
         }
+    }
+
+    // MARK: - Snapping
+    /// Pulls a dragged rectangle onto nearby guides and, for displays, bezel to bezel against neighbors.
+    /// Only edges that are actually moving snap, and corner resizes are left alone so they keep their proportions.
+    private func snapped(_ rect: CGRect, target: EditTarget, mode: DragMode) -> CGRect {
+        guard GuideSettings.snapToGuides || GuideSettings.snapToBezels else { return rect }
+        let tolerance = 8 / pointsPerInch
+
+        let movesLeft: Bool, movesRight: Bool, movesBottom: Bool, movesTop: Bool
+        switch mode {
+        case .move:
+            (movesLeft, movesRight, movesBottom, movesTop) = (true, true, true, true)
+        case .resize(let handle):
+            guard !handle.isCorner else { return rect }
+            movesLeft = handle.unit.x == 0; movesRight = handle.unit.x == 1
+            movesBottom = handle.unit.y == 0; movesTop = handle.unit.y == 1
+        }
+
+        // The dragged item's panel edges sit inside its bezel; images have none.
+        var insets: (top: CGFloat, bottom: CGFloat, left: CGFloat, right: CGFloat) = (0, 0, 0, 0)
+        var draggedDisplay: CGDirectDisplayID?
+        if case .display(let id) = target, let display = physicalLayout.displays.first(where: { $0.id == id }) {
+            insets = bezelInsets(display)
+            draggedDisplay = id
+        }
+        let others = physicalLayout.displays.filter { $0.id != draggedDisplay }
+
+        // Panel edges snap to guides: custom ones, and the other displays' edges.
+        var guideX: [CGFloat] = [], guideY: [CGFloat] = []
+        if GuideSettings.snapToGuides {
+            if GuideSettings.showCustomGuides {
+                for guide in GuideStore.shared.guides {
+                    if guide.axis == .vertical { guideX.append(CGFloat(guide.position)) } else { guideY.append(CGFloat(guide.position)) }
+                }
+            }
+            if GuideSettings.showEdgeGuides && GuideSettings.edgeScope == .allDisplays {
+                for display in others {
+                    guideX += [display.x, display.right]
+                    guideY += [display.y, display.bottom]
+                }
+            }
+        }
+        // Outer (bezel) edges snap to the other displays' outer edges.
+        var bezelX: [CGFloat] = [], bezelY: [CGFloat] = []
+        if GuideSettings.snapToBezels, draggedDisplay != nil {
+            for display in others {
+                let outer = outerPhysicalRect(display)
+                bezelX += [outer.minX, outer.maxX]
+                bezelY += [outer.minY, outer.maxY]
+            }
+        }
+
+        /// The smallest nudge, within tolerance, that puts one of the edges on a target.
+        func nudge(_ edges: [(value: CGFloat, targets: [CGFloat], isMoving: Bool, isLow: Bool)]) -> (delta: CGFloat, isLow: Bool)? {
+            var best: (delta: CGFloat, isLow: Bool)?
+            for edge in edges where edge.isMoving {
+                for target in edge.targets {
+                    let delta = target - edge.value
+                    if abs(delta) <= tolerance, abs(delta) < abs(best?.delta ?? .infinity) { best = (delta, edge.isLow) }
+                }
+            }
+            return best
+        }
+
+        var result = rect
+        if let x = nudge([
+            (rect.minX + insets.left, guideX, movesLeft, true), (rect.maxX - insets.right, guideX, movesRight, false),
+            (rect.minX, bezelX, movesLeft, true), (rect.maxX, bezelX, movesRight, false)
+        ]) {
+            if case .move = mode { result.origin.x += x.delta }
+            else if x.isLow { result.origin.x += x.delta; result.size.width -= x.delta }
+            else { result.size.width += x.delta }
+        }
+        if let y = nudge([
+            (rect.minY + insets.bottom, guideY, movesBottom, true), (rect.maxY - insets.top, guideY, movesTop, false),
+            (rect.minY, bezelY, movesBottom, true), (rect.maxY, bezelY, movesTop, false)
+        ]) {
+            if case .move = mode { result.origin.y += y.delta }
+            else if y.isLow { result.origin.y += y.delta; result.size.height -= y.delta }
+            else { result.size.height += y.delta }
+        }
+        return result
     }
 
     // MARK: - Zoom to Fit
@@ -1423,6 +1556,26 @@ class DisplayArrangementView: NSView {
     }
 
     // MARK: - Mouse
+    /// A magnifier for zoom drags; AppKit has no public one.
+    private static let magnifierCursor: NSCursor = {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 20, weight: .semibold).applying(NSImage.SymbolConfiguration(paletteColors: [.black, .black]))
+        guard let image = NSImage(systemSymbolName: "plus.magnifyingglass", accessibilityDescription: "Zoom")?.withSymbolConfiguration(configuration) else { return .arrow }
+        return NSCursor(image: image, hotSpot: NSPoint(x: image.size.width * 0.42, y: image.size.height * 0.42))
+    }()
+    private var pushedCursor = false
+
+    private func pushCursor(_ cursor: NSCursor) {
+        guard !pushedCursor else { return }
+        cursor.push()
+        pushedCursor = true
+    }
+
+    private func popCursor() {
+        guard pushedCursor else { return }
+        NSCursor.pop()
+        pushedCursor = false
+    }
+
     /// Selects a display or the reference image, or clears the selection.
     private func select(_ target: EditTarget?) {
         selectedDisplayID = nil
@@ -1444,7 +1597,7 @@ class DisplayArrangementView: NSView {
 
         // Dragging out of a ruler creates a guide; dragging a custom guide moves it.
         if let axis = rulerAxis(at: point) {
-            GuideSettings.showGuides = true
+            GuideSettings.showCustomGuides = true
             let guide = Guide(axis: axis, position: guidePosition(for: point, axis: axis))
             GuideStore.shared.add(guide)
             guideDrag = guide.id
@@ -1457,9 +1610,14 @@ class DisplayArrangementView: NSView {
             return
         }
         // Dragging a gap measurement slides it along the gap, or moves the display on the grabbed side.
-        if let hit = gapMeasurement(at: point), let rect = physicalOuterRect(of: .display(hit.grabbed)) {
-            select(.display(hit.grabbed))
-            gapDrag = GapDrag(measurement: hit.measurement, grabbed: hit.grabbed, startPoint: point, startRect: rect)
+        if let hit = gapMeasurement(at: point) {
+            var rect: CGRect?
+            if hit.zone != .middle {
+                let grabbed = hit.zone == .first ? hit.measurement.first : hit.measurement.second
+                select(.display(grabbed))
+                rect = physicalOuterRect(of: .display(grabbed))
+            }
+            gapDrag = GapDrag(measurement: hit.measurement, zone: hit.zone, startPoint: point, startRect: rect)
             return
         }
 
@@ -1494,8 +1652,9 @@ class DisplayArrangementView: NSView {
             return
         }
 
-        // Shift-drag on the background zooms, keeping the selection.
-        if event.modifierFlags.contains(.shift) {
+        // Option-drag on the background zooms, keeping the selection.
+        if event.modifierFlags.contains(.option) {
+            pushCursor(Self.magnifierCursor)
             isZoomDragging = true
             zoomDragStart = point
             zoomDragStartZoom = zoom
@@ -1504,6 +1663,7 @@ class DisplayArrangementView: NSView {
         }
 
         select(nil)
+        pushCursor(.closedHand)
         panStartPoint = point
         panStartOffset = viewOffset
         isPanning = true
@@ -1521,7 +1681,7 @@ class DisplayArrangementView: NSView {
         }
 
         if let gapDrag {
-            dragGap(gapDrag, to: currentPoint)
+            dragGap(gapDrag, to: currentPoint, constrain: event.modifierFlags.contains(.shift))
             return
         }
 
@@ -1529,10 +1689,11 @@ class DisplayArrangementView: NSView {
             let rect: CGRect
             switch dragMode {
             case .move:
-                rect = dragStartRect.offsetBy(
-                    dx: (currentPoint.x - dragStartPoint.x) / pointsPerInch,
-                    dy: (currentPoint.y - dragStartPoint.y) / pointsPerInch
-                )
+                var dx = (currentPoint.x - dragStartPoint.x) / pointsPerInch
+                var dy = (currentPoint.y - dragStartPoint.y) / pointsPerInch
+                // Shift keeps the move to one direction.
+                if event.modifierFlags.contains(.shift) { if abs(dx) > abs(dy) { dy = 0 } else { dx = 0 } }
+                rect = dragStartRect.offsetBy(dx: dx, dy: dy)
             case .resize(let handle):
                 var minSize = CGSize(width: minimumItemSize, height: minimumItemSize)
                 if case .display(let id) = dragTarget, let d = physicalLayout.displays.first(where: { $0.id == id }) {
@@ -1541,7 +1702,9 @@ class DisplayArrangementView: NSView {
                 }
                 rect = resizedRect(dragStartRect, handle: handle, to: viewToPhysical(currentPoint), keepAspect: { if case .image = dragTarget { return true } else { return false } }(), minSize: minSize)
             }
-            apply(rect, to: dragTarget)
+            // Option holds snapping off for the drag.
+            let snappedRect = event.modifierFlags.contains(.option) ? rect : snapped(rect, target: dragTarget, mode: dragMode)
+            apply(snappedRect, to: dragTarget)
             return
         }
 
@@ -1561,8 +1724,10 @@ class DisplayArrangementView: NSView {
             return
         }
 
-        let dx = currentPoint.x - panStartPoint.x
-        let dy = currentPoint.y - panStartPoint.y
+        var dx = currentPoint.x - panStartPoint.x
+        var dy = currentPoint.y - panStartPoint.y
+        // Shift keeps the pan to one direction.
+        if event.modifierFlags.contains(.shift) { if abs(dx) > abs(dy) { dy = 0 } else { dx = 0 } }
         viewOffset = CGPoint(
             x: panStartOffset.x + dx,
             y: panStartOffset.y + dy
@@ -1614,6 +1779,7 @@ class DisplayArrangementView: NSView {
             needsDisplay = true
             return
         }
+        popCursor()
         isPanning = false
         isZoomDragging = false
         if case .display? = dragTarget {

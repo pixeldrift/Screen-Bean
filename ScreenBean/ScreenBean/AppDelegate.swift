@@ -244,12 +244,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleGapMeasurements() { GuideSettings.showGapMeasurements.toggle() }
-    @objc private func toggleGuides() { GuideSettings.showGuides.toggle() }
+    /// Turns edge and custom guides on together, or off if both are already on.
+    @objc private func toggleGuides() {
+        let allOn = GuideSettings.showEdgeGuides && GuideSettings.showCustomGuides
+        GuideSettings.showEdgeGuides = !allOn
+        GuideSettings.showCustomGuides = !allOn
+    }
     @objc private func clearGuides() { GuideStore.shared.removeAll() }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(toggleGapMeasurements) { item.state = GuideSettings.showGapMeasurements ? .on : .off }
-        if item.action == #selector(toggleGuides) { item.state = GuideSettings.showGuides ? .on : .off }
+        if item.action == #selector(toggleGuides) { item.state = GuideSettings.showEdgeGuides && GuideSettings.showCustomGuides ? .on : .off }
         if item.action == #selector(clearGuides) { return !GuideStore.shared.guides.isEmpty }
         if item.action == #selector(toggleFractions) {
             item.state = MeasurementFormat.useFractions ? .on : .off
