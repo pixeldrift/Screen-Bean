@@ -116,6 +116,7 @@ class DisplayArrangementView: NSView {
     private var zoomDragStart = CGPoint.zero
     private var zoomDragStartZoom: CGFloat = 1
     private var zoomDragAnchor = CGPoint.zero
+    private var zoomDragAnchorPoint = CGPoint.zero
     // Selection, hover and drag state for displays and the reference image.
     private var selectedImage: ImageLayerSlot?
     private var hoverTarget: EditTarget?
@@ -363,6 +364,7 @@ class DisplayArrangementView: NSView {
             withHandles.append(target)
             drawHandles(for: target, in: context)
         }
+        drawAnchorIfNeeded()
         drawRulers()
         drawGuideDragLabel()
     }
@@ -831,22 +833,36 @@ class DisplayArrangementView: NSView {
         context.restoreGState()
     }
 
-    /// The new rectangle when `handle` is dragged to `point`. Corners keep the
-    /// rectangle's proportions; edges stretch one side unless `keepAspect` is set.
-    private func resizedRect(_ r: CGRect, handle: GrabHandle, to p: CGPoint, keepAspect: Bool, minSize: CGSize) -> CGRect {
+    /// The new rectangle when `handle` is dragged to `p`.
+    /// - `keepAspect`: scale proportionally; otherwise each dimension follows the pointer on its own.
+    /// - `fromCenter`: grow or shrink equally around the center; otherwise the opposite corner or edge stays put.
+    private func resizedRect(_ r: CGRect, handle: GrabHandle, to p: CGPoint, keepAspect: Bool, fromCenter: Bool, minSize: CGSize) -> CGRect {
         let u = handle.unit
-        // The fixed point opposite the handle.
+        let changesX = u.x != 0.5, changesY = u.y != 0.5
+        let center = CGPoint(x: r.midX, y: r.midY)
+        // The fixed point opposite the handle, when anchoring there.
         let anchor = CGPoint(x: r.minX + (1 - u.x) * r.width, y: r.minY + (1 - u.y) * r.height)
+
         var w = r.width, h = r.height
-        if u.x != 0.5 { w = max(minSize.width, u.x == 0 ? anchor.x - p.x : p.x - anchor.x) }
-        if u.y != 0.5 { h = max(minSize.height, u.y == 0 ? anchor.y - p.y : p.y - anchor.y) }
-        let aspect = r.width / max(r.height, 0.0001)
-        if handle.isCorner {
-            let scale = max(w / r.width, h / r.height)
-            w = r.width * scale; h = r.height * scale
-        } else if keepAspect {
-            if u.x != 0.5 { h = w / aspect } else { w = h * aspect }
+        if fromCenter {
+            if changesX { w = max(minSize.width, 2 * abs(p.x - center.x)) }
+            if changesY { h = max(minSize.height, 2 * abs(p.y - center.y)) }
+        } else {
+            if changesX { w = max(minSize.width, u.x == 0 ? anchor.x - p.x : p.x - anchor.x) }
+            if changesY { h = max(minSize.height, u.y == 0 ? anchor.y - p.y : p.y - anchor.y) }
         }
+        if keepAspect {
+            let aspect = r.width / max(r.height, 0.0001)
+            if changesX && changesY {
+                let scale = max(w / r.width, h / r.height)
+                w = r.width * scale; h = r.height * scale
+            } else if changesX {
+                h = w / aspect
+            } else {
+                w = h * aspect
+            }
+        }
+        if fromCenter { return CGRect(x: center.x - w / 2, y: center.y - h / 2, width: w, height: h) }
         let x = u.x == 0 ? anchor.x - w : (u.x == 1 ? anchor.x : r.midX - w / 2)
         let y = u.y == 0 ? anchor.y - h : (u.y == 1 ? anchor.y : r.midY - h / 2)
         return CGRect(x: x, y: y, width: w, height: h)
@@ -880,6 +896,8 @@ class DisplayArrangementView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         let target = hoverTest(point)
         if target != hoverTarget { hoverTarget = target; needsDisplay = true }
+        let handleUnderMouse = itemHit(point)?.handle
+        if handleUnderMouse != hoverHandle { hoverHandle = handleUnderMouse; needsDisplay = true }
 
         // Custom guides highlight and show a resize cursor under the mouse.
         let guide = rulerAxis(at: point) == nil ? customGuide(at: point) : nil
@@ -908,6 +926,7 @@ class DisplayArrangementView: NSView {
 
     override func mouseExited(with event: NSEvent) {
         if hoverTarget != nil { hoverTarget = nil; needsDisplay = true }
+        if hoverHandle != nil { hoverHandle = nil; needsDisplay = true }
         if hoverGuideID != nil { hoverGuideID = nil; needsDisplay = true }
         if hoverGapKey != nil { hoverGapKey = nil; hoverGapZone = nil; needsDisplay = true }
         NSCursor.arrow.set()
@@ -934,6 +953,9 @@ class DisplayArrangementView: NSView {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
+        // Control is a modifier for dragging (it flips snapping), so a Control-click isn't a right click.
+        // Right click and a two-finger click still open the menu.
+        if event.type == .leftMouseDown { return nil }
         let point = convert(event.locationInWindow, from: nil)
         let menu = NSMenu()
         if let guide = customGuide(at: point) {
@@ -1374,86 +1396,155 @@ class DisplayArrangementView: NSView {
     }
 
     // MARK: - Snapping
-    /// Pulls a dragged rectangle onto nearby guides and, for displays, bezel to bezel against neighbors.
-    /// Only edges that are actually moving snap, and corner resizes are left alone so they keep their proportions.
-    private func snapped(_ rect: CGRect, target: EditTarget, mode: DragMode) -> CGRect {
-        guard GuideSettings.snapToGuides || GuideSettings.snapToBezels else { return rect }
-        let tolerance = 8 / pointsPerInch
-
-        let movesLeft: Bool, movesRight: Bool, movesBottom: Bool, movesTop: Bool
-        switch mode {
-        case .move:
-            (movesLeft, movesRight, movesBottom, movesTop) = (true, true, true, true)
-        case .resize(let handle):
-            guard !handle.isCorner else { return rect }
-            movesLeft = handle.unit.x == 0; movesRight = handle.unit.x == 1
-            movesBottom = handle.unit.y == 0; movesTop = handle.unit.y == 1
-        }
-
-        // The dragged item's panel edges sit inside its bezel; images have none.
+    /// What a dragged item can snap to: positions for its panel edges and for its outer (bezel) edges.
+    private struct SnapTargets {
+        var guideX: [CGFloat] = [], guideY: [CGFloat] = []
+        var bezelX: [CGFloat] = [], bezelY: [CGFloat] = []
+        /// How far the dragged item's panel edges sit inside its outer edges; images have no bezel.
         var insets: (top: CGFloat, bottom: CGFloat, left: CGFloat, right: CGFloat) = (0, 0, 0, 0)
+    }
+
+    private func snapTargets(for target: EditTarget, guides: Bool, bezels: Bool) -> SnapTargets {
+        var targets = SnapTargets()
         var draggedDisplay: CGDirectDisplayID?
         if case .display(let id) = target, let display = physicalLayout.displays.first(where: { $0.id == id }) {
-            insets = bezelInsets(display)
+            targets.insets = bezelInsets(display)
             draggedDisplay = id
         }
         let others = physicalLayout.displays.filter { $0.id != draggedDisplay }
-
-        // Panel edges snap to guides: custom ones, and the other displays' edges.
-        var guideX: [CGFloat] = [], guideY: [CGFloat] = []
-        if GuideSettings.snapToGuides {
+        if guides {
+            // Panel edges snap to custom guides and to the other displays' edges.
             if GuideSettings.showCustomGuides {
                 for guide in GuideStore.shared.guides {
-                    if guide.axis == .vertical { guideX.append(CGFloat(guide.position)) } else { guideY.append(CGFloat(guide.position)) }
+                    if guide.axis == .vertical { targets.guideX.append(CGFloat(guide.position)) } else { targets.guideY.append(CGFloat(guide.position)) }
                 }
             }
             if GuideSettings.showEdgeGuides && GuideSettings.edgeScope == .allDisplays {
                 for display in others {
-                    guideX += [display.x, display.right]
-                    guideY += [display.y, display.bottom]
+                    targets.guideX += [display.x, display.right]
+                    targets.guideY += [display.y, display.bottom]
                 }
             }
         }
-        // Outer (bezel) edges snap to the other displays' outer edges.
-        var bezelX: [CGFloat] = [], bezelY: [CGFloat] = []
-        if GuideSettings.snapToBezels, draggedDisplay != nil {
+        if bezels, draggedDisplay != nil {
+            // Outer edges snap to the other displays' outer edges, so bezels can touch.
             for display in others {
                 let outer = outerPhysicalRect(display)
-                bezelX += [outer.minX, outer.maxX]
-                bezelY += [outer.minY, outer.maxY]
+                targets.bezelX += [outer.minX, outer.maxX]
+                targets.bezelY += [outer.minY, outer.maxY]
             }
         }
+        return targets
+    }
 
-        /// The smallest nudge, within tolerance, that puts one of the edges on a target.
-        func nudge(_ edges: [(value: CGFloat, targets: [CGFloat], isMoving: Bool, isLow: Bool)]) -> (delta: CGFloat, isLow: Bool)? {
-            var best: (delta: CGFloat, isLow: Bool)?
-            for edge in edges where edge.isMoving {
-                for target in edge.targets {
-                    let delta = target - edge.value
-                    if abs(delta) <= tolerance, abs(delta) < abs(best?.delta ?? .infinity) { best = (delta, edge.isLow) }
-                }
+    /// The smallest nudge, within `tolerance`, that puts an edge on one of the targets.
+    private func nudge(_ edges: [(value: CGFloat, targets: [CGFloat])], tolerance: CGFloat) -> CGFloat? {
+        var best: CGFloat?
+        for edge in edges {
+            for target in edge.targets {
+                let delta = target - edge.value
+                if abs(delta) <= tolerance, abs(delta) < abs(best ?? .infinity) { best = delta }
             }
-            return best
         }
+        return best
+    }
 
+    /// Pulls a dragged rectangle onto nearby guides and, for displays, bezel to bezel against neighbors.
+    private func snappedMove(_ rect: CGRect, target: EditTarget, guides: Bool, bezels: Bool) -> CGRect {
+        guard guides || bezels else { return rect }
+        let t = snapTargets(for: target, guides: guides, bezels: bezels)
+        let tolerance = 8 / pointsPerInch
         var result = rect
-        if let x = nudge([
-            (rect.minX + insets.left, guideX, movesLeft, true), (rect.maxX - insets.right, guideX, movesRight, false),
-            (rect.minX, bezelX, movesLeft, true), (rect.maxX, bezelX, movesRight, false)
-        ]) {
-            if case .move = mode { result.origin.x += x.delta }
-            else if x.isLow { result.origin.x += x.delta; result.size.width -= x.delta }
-            else { result.size.width += x.delta }
+        if let dx = nudge([
+            (rect.minX + t.insets.left, t.guideX), (rect.maxX - t.insets.right, t.guideX),
+            (rect.minX, t.bezelX), (rect.maxX, t.bezelX)
+        ], tolerance: tolerance) { result.origin.x += dx }
+        if let dy = nudge([
+            (rect.minY + t.insets.bottom, t.guideY), (rect.maxY - t.insets.top, t.guideY),
+            (rect.minY, t.bezelY), (rect.maxY, t.bezelY)
+        ], tolerance: tolerance) { result.origin.y += dy }
+        return result
+    }
+
+    /// While resizing, the pointer marks the edge being dragged, so snapping moves the pointer.
+    private func snappedPointer(_ p: CGPoint, handle: GrabHandle, target: EditTarget, guides: Bool, bezels: Bool) -> CGPoint {
+        guard guides || bezels else { return p }
+        let t = snapTargets(for: target, guides: guides, bezels: bezels)
+        let tolerance = 8 / pointsPerInch
+        var result = p
+        let u = handle.unit
+        if u.x != 0.5 {
+            // The left edge's panel is inset to its right; the right edge's to its left.
+            let inset = u.x == 0 ? t.insets.left : -t.insets.right
+            if let dx = nudge([(p.x + inset, t.guideX), (p.x, t.bezelX)], tolerance: tolerance) { result.x += dx }
         }
-        if let y = nudge([
-            (rect.minY + insets.bottom, guideY, movesBottom, true), (rect.maxY - insets.top, guideY, movesTop, false),
-            (rect.minY, bezelY, movesBottom, true), (rect.maxY, bezelY, movesTop, false)
-        ]) {
-            if case .move = mode { result.origin.y += y.delta }
-            else if y.isLow { result.origin.y += y.delta; result.size.height -= y.delta }
-            else { result.size.height += y.delta }
+        if u.y != 0.5 {
+            let inset = u.y == 0 ? t.insets.bottom : -t.insets.top
+            if let dy = nudge([(p.y + inset, t.guideY), (p.y, t.bezelY)], tolerance: tolerance) { result.y += dy }
         }
         return result
+    }
+
+    // MARK: - Anchor Indicator
+    private var hoverHandle: GrabHandle?
+    private var lastModifiers: NSEvent.ModifierFlags = []
+
+    /// The fixed point of a resize, with arrows in the directions the item will grow or shrink:
+    /// both ways around the center by default, or toward the handle from the opposite corner with Option.
+    private func drawAnchorIndicator(rect physical: CGRect, handle: GrabHandle, fromCenter: Bool) {
+        let u = handle.unit
+        let anchor = fromCenter
+            ? CGPoint(x: physical.midX, y: physical.midY)
+            : CGPoint(x: physical.minX + (1 - u.x) * physical.width, y: physical.minY + (1 - u.y) * physical.height)
+        let center = CGPoint(x: anchor.x * pointsPerInch + viewOffset.x, y: anchor.y * pointsPerInch + viewOffset.y)
+
+        var directions: [CGPoint] = []
+        if u.x != 0.5 { directions += fromCenter ? [CGPoint(x: 1, y: 0), CGPoint(x: -1, y: 0)] : [CGPoint(x: u.x == 1 ? 1 : -1, y: 0)] }
+        if u.y != 0.5 { directions += fromCenter ? [CGPoint(x: 0, y: 1), CGPoint(x: 0, y: -1)] : [CGPoint(x: 0, y: u.y == 1 ? 1 : -1)] }
+
+        let arrows = NSBezierPath()
+        arrows.lineCapStyle = .round
+        arrows.lineJoinStyle = .round
+        for d in directions {
+            let tail = CGPoint(x: center.x + d.x * 11, y: center.y + d.y * 11)
+            let tip = CGPoint(x: center.x + d.x * 26, y: center.y + d.y * 26)
+            arrows.move(to: tail); arrows.line(to: tip)
+            // An open arrowhead at the tip.
+            arrows.move(to: CGPoint(x: tip.x - d.x * 5 - d.y * 4, y: tip.y - d.y * 5 - d.x * 4))
+            arrows.line(to: tip)
+            arrows.line(to: CGPoint(x: tip.x - d.x * 5 + d.y * 4, y: tip.y - d.y * 5 + d.x * 4))
+        }
+        NSColor.white.withAlphaComponent(0.9).setStroke()
+        arrows.lineWidth = 4.5
+        arrows.stroke()
+        NSColor.controlAccentColor.setStroke()
+        arrows.lineWidth = 2
+        arrows.stroke()
+
+        // The anchor itself: a ring with a dot.
+        let ring = NSBezierPath(ovalIn: CGRect(x: center.x - 6, y: center.y - 6, width: 12, height: 12))
+        NSColor.white.setFill()
+        ring.fill()
+        NSColor.controlAccentColor.setStroke()
+        ring.lineWidth = 2
+        ring.stroke()
+        NSColor.controlAccentColor.setFill()
+        NSBezierPath(ovalIn: CGRect(x: center.x - 2.5, y: center.y - 2.5, width: 5, height: 5)).fill()
+    }
+
+    /// Shows the anchor while resizing, or while hovering a handle (following the modifier keys held).
+    private func drawAnchorIfNeeded() {
+        if dragTarget != nil, case .resize(let handle) = dragMode {
+            drawAnchorIndicator(rect: dragStartRect, handle: handle, fromCenter: !lastModifiers.contains(.option))
+        } else if dragTarget == nil, let hoverHandle, let target = hoverTarget ?? currentSelection, let rect = physicalOuterRect(of: target) {
+            drawAnchorIndicator(rect: rect, handle: hoverHandle, fromCenter: !NSEvent.modifierFlags.contains(.option))
+        }
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        lastModifiers = event.modifierFlags
+        needsDisplay = true
+        super.flagsChanged(with: event)
     }
 
     // MARK: - Zoom to Fit
@@ -1652,13 +1743,15 @@ class DisplayArrangementView: NSView {
             return
         }
 
-        // Option-drag on the background zooms, keeping the selection.
-        if event.modifierFlags.contains(.option) {
+        // Command-drag on the background zooms, keeping the selection.
+        if event.modifierFlags.contains(.command) {
             pushCursor(Self.magnifierCursor)
             isZoomDragging = true
             zoomDragStart = point
             zoomDragStartZoom = zoom
-            zoomDragAnchor = viewToPhysical(point)
+            // Option zooms around the middle of the viewport instead of where the drag began.
+            zoomDragAnchorPoint = event.modifierFlags.contains(.option) ? CGPoint(x: bounds.midX, y: bounds.midY) : point
+            zoomDragAnchor = viewToPhysical(zoomDragAnchorPoint)
             return
         }
 
@@ -1686,25 +1779,37 @@ class DisplayArrangementView: NSView {
         }
 
         if let dragTarget {
+            let flags = event.modifierFlags
+            lastModifiers = flags
+            // Control turns snapping the other way for as long as it is held.
+            let invert = flags.contains(.control)
+            let snapGuides = GuideSettings.snapToGuides != invert
+            let snapBezels = GuideSettings.snapToBezels != invert
             let rect: CGRect
             switch dragMode {
             case .move:
                 var dx = (currentPoint.x - dragStartPoint.x) / pointsPerInch
                 var dy = (currentPoint.y - dragStartPoint.y) / pointsPerInch
                 // Shift keeps the move to one direction.
-                if event.modifierFlags.contains(.shift) { if abs(dx) > abs(dy) { dy = 0 } else { dx = 0 } }
-                rect = dragStartRect.offsetBy(dx: dx, dy: dy)
+                if flags.contains(.shift) { if abs(dx) > abs(dy) { dy = 0 } else { dx = 0 } }
+                rect = snappedMove(dragStartRect.offsetBy(dx: dx, dy: dy), target: dragTarget, guides: snapGuides, bezels: snapBezels)
             case .resize(let handle):
                 var minSize = CGSize(width: minimumItemSize, height: minimumItemSize)
+                var isImage = false
                 if case .display(let id) = dragTarget, let d = physicalLayout.displays.first(where: { $0.id == id }) {
                     let i = bezelInsets(d)
                     minSize = CGSize(width: i.left + i.right + minimumItemSize, height: i.top + i.bottom + minimumItemSize)
+                } else if case .image = dragTarget {
+                    isImage = true
                 }
-                rect = resizedRect(dragStartRect, handle: handle, to: viewToPhysical(currentPoint), keepAspect: { if case .image = dragTarget { return true } else { return false } }(), minSize: minSize)
+                // Proportional by default; Shift unlinks width and height (images keep their shape).
+                let keepAspect = isImage || !flags.contains(.shift)
+                // Scaling is around the center by default; Option anchors the opposite corner or edge instead.
+                let fromCenter = !flags.contains(.option)
+                let pointer = snappedPointer(viewToPhysical(currentPoint), handle: handle, target: dragTarget, guides: snapGuides, bezels: snapBezels)
+                rect = resizedRect(dragStartRect, handle: handle, to: pointer, keepAspect: keepAspect, fromCenter: fromCenter, minSize: minSize)
             }
-            // Option holds snapping off for the drag.
-            let snappedRect = event.modifierFlags.contains(.option) ? rect : snapped(rect, target: dragTarget, mode: dragMode)
-            apply(snappedRect, to: dragTarget)
+            apply(rect, to: dragTarget)
             return
         }
 
@@ -1713,8 +1818,8 @@ class DisplayArrangementView: NSView {
             let newZoom = min(max(zoomDragStartZoom * exp((currentPoint.y - zoomDragStart.y) * 0.01), 0.05), 10)
             zoom = newZoom
             viewOffset = CGPoint(
-                x: zoomDragStart.x - zoomDragAnchor.x * pointsPerInch,
-                y: zoomDragStart.y - zoomDragAnchor.y * pointsPerInch
+                x: zoomDragAnchorPoint.x - zoomDragAnchor.x * pointsPerInch,
+                y: zoomDragAnchorPoint.y - zoomDragAnchor.y * pointsPerInch
             )
             needsDisplay = true
             return
@@ -1854,16 +1959,17 @@ class DisplayArrangementView: NSView {
     override func scrollWheel(
         with event: NSEvent
     ) {
-        // Zoom around the cursor, or around the middle of the viewport if the cursor is outside it.
+        // Zoom around the cursor, or around the middle of the viewport if the cursor is outside it
+        // or Option is held.
         let location = convert(event.locationInWindow, from: nil)
-        let anchor = bounds.contains(location) ? location : CGPoint(x: bounds.midX, y: bounds.midY)
+        let anchor = bounds.contains(location) && !event.modifierFlags.contains(.option) ? location : CGPoint(x: bounds.midX, y: bounds.midY)
         setZoom(zoom * exp(CGFloat(event.scrollingDeltaY) * 0.01), keeping: anchor)
     }
 
     /// Trackpad pinch: zoom around the point between the fingers.
     override func magnify(with event: NSEvent) {
         let location = convert(event.locationInWindow, from: nil)
-        let anchor = bounds.contains(location) ? location : CGPoint(x: bounds.midX, y: bounds.midY)
+        let anchor = bounds.contains(location) && !event.modifierFlags.contains(.option) ? location : CGPoint(x: bounds.midX, y: bounds.midY)
         setZoom(zoom * (1 + event.magnification), keeping: anchor)
     }
 }

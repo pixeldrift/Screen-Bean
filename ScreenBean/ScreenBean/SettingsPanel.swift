@@ -77,9 +77,9 @@ final class SettingsPanel: NSView {
 
         // Snapping.
         snapGuidesCheckbox.target = self; snapGuidesCheckbox.action = #selector(snapGuidesToggled)
-        snapGuidesCheckbox.toolTip = "Dragged display and image edges snap to guides. Hold Option to snap off for one drag."
+        snapGuidesCheckbox.toolTip = "Dragged display and image edges snap to guides. Hold Control to flip snapping for one drag."
         snapBezelsCheckbox.target = self; snapBezelsCheckbox.action = #selector(snapBezelsToggled)
-        snapBezelsCheckbox.toolTip = "Dragged displays snap so their bezels touch their neighbors'. Hold Option to snap off for one drag."
+        snapBezelsCheckbox.toolTip = "Dragged displays snap so their bezels touch their neighbors'. Hold Control to flip snapping for one drag."
 
         let guides = vertical([guidesLabel, edgeRow, gapGuidesCheckbox, customGuidesCheckbox, snapGuidesCheckbox, snapBezelsCheckbox, clearGuidesButton], spacing: 6)
         NotificationCenter.default.addObserver(forName: GuideSettings.didChange, object: nil, queue: .main) { [weak self] _ in self?.syncGuideControls() }
