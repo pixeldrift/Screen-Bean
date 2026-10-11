@@ -283,7 +283,6 @@ class DisplayArrangementView: NSView {
             drawHandles(for: target, in: context)
         }
     }
-    }
 
     // MARK: - Image Layers
     /// Where an image layer sits, in physical inches. Layers without a frame
