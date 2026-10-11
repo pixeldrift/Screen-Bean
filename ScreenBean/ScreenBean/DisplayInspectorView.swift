@@ -113,7 +113,7 @@ final class DisplayInspectorView: NSView {
         nickname.stringValue = d.nickname; detected.stringValue = "Detected: " + DisplayInfo.displayName(for: d.displayID)
         width.stringValue = String(format: "%.2f", d.physicalWidthInches); height.stringValue = String(format: "%.2f", d.physicalHeightInches)
         self.x.stringValue = String(format: "%.2f", x); self.y.stringValue = String(format: "%.2f", y)
-        color.color = colorFromHex(d.colorHex); uniform.state = d.uniformBezel ? .on : .off
+        color.color = NSColor(displayHex: d.colorHex); uniform.state = d.uniformBezel ? .on : .off
         let b = d.uniformBezel ? d.bezelTop : (d.bezelTop + d.bezelBottom + d.bezelLeft + d.bezelRight) / 4
         bezel.stringValue = String(format: "%.2f", b); slider.doubleValue = b
         top.stringValue = String(format: "%.2f", d.bezelTop); bottom.stringValue = String(format: "%.2f", d.bezelBottom)
@@ -143,9 +143,5 @@ final class DisplayInspectorView: NSView {
     private func uniformBezelValue(_ v: Double) { bezel.doubleValue = v; emit(uniform: true, t: v, b: v, l: v, r: v) }
     private func emit(name: String? = nil, w: Double? = nil, h: Double? = nil, x: Double? = nil, y: Double? = nil, color: NSColor? = nil, uniform: Bool? = nil, t: Double? = nil, b: Double? = nil, l: Double? = nil, r: Double? = nil) {
         onChange?(name, w, h, x, y, color, uniform, t, b, l, r)
-    }
-    private func colorFromHex(_ hex: String) -> NSColor {
-        let v = UInt64(hex, radix: 16) ?? 0x28B7B0
-        return NSColor(red: CGFloat((v >> 16) & 255) / 255, green: CGFloat((v >> 8) & 255) / 255, blue: CGFloat(v & 255) / 255, alpha: 1)
     }
 }

@@ -31,21 +31,18 @@ struct DisplayInfo {
     /// True when the physical dimensions have been manually calibrated.
     var isCalibrated: Bool
 
-    /// Legacy display scale value.
-    var scaleFactor: CGFloat
-
     /// macOS display position.
     var positionX: Double
     var positionY: Double
 
     var isPrimary: Bool
 
-    var colorHex: String = "28B7B0"
+    var colorHex: String = DisplayDefaults.colorHex
     var uniformBezel: Bool = true
-    var bezelTop: Double = 0.25
-    var bezelBottom: Double = 0.25
-    var bezelLeft: Double = 0.25
-    var bezelRight: Double = 0.25
+    var bezelTop: Double = DisplayDefaults.bezelInches
+    var bezelBottom: Double = DisplayDefaults.bezelInches
+    var bezelLeft: Double = DisplayDefaults.bezelInches
+    var bezelRight: Double = DisplayDefaults.bezelInches
 
     var aspectRatio: Double {
         Double(pixelWidth) / Double(pixelHeight)
@@ -132,7 +129,6 @@ struct DisplayInfo {
                 detectedWidthInches: widthIn,
                 detectedHeightInches: heightIn,
                 isCalibrated: false,
-                scaleFactor: 0.1,
                 positionX: Double(origin.x),
                 positionY: Double(origin.y),
                 isPrimary: CGDisplayIsMain(id) != 0
@@ -252,98 +248,5 @@ struct DisplayInfo {
         bezelBottom = configuration.bezelBottom
         bezelLeft = configuration.bezelLeft
         bezelRight = configuration.bezelRight
-    }
-
-    // MARK: - Layout Helper
-
-    struct DisplayLayoutHelper {
-
-        static func normalizedDisplays(
-            from displays: [DisplayInfo],
-            fitting size: CGSize,
-            padding: CGFloat = 40
-        ) -> [
-            (
-                info: DisplayInfo,
-                frame: CGRect
-            )
-        ] {
-
-            guard !displays.isEmpty else {
-                return []
-            }
-
-            let minX =
-                displays.map {
-                    $0.positionX
-                }.min() ?? 0
-
-            let minY =
-                displays.map {
-                    $0.positionY
-                }.min() ?? 0
-
-            let maxX =
-                displays.map {
-                    $0.positionX +
-                    $0.physicalWidthInches
-                }.max() ?? 1
-
-            let maxY =
-                displays.map {
-                    $0.positionY +
-                    $0.physicalHeightInches
-                }.max() ?? 1
-
-            let layoutWidth =
-                maxX - minX
-
-            let layoutHeight =
-                maxY - minY
-
-            let scaleX =
-                (size.width - padding * 2) /
-                layoutWidth
-
-            let scaleY =
-                (size.height - padding * 2) /
-                layoutHeight
-
-            let scale =
-                min(scaleX, scaleY)
-
-            return displays.map { display in
-
-                let width =
-                    CGFloat(
-                        display.physicalWidthInches
-                    ) * scale
-
-                let height =
-                    CGFloat(
-                        display.physicalHeightInches
-                    ) * scale
-
-                let x =
-                    CGFloat(
-                        display.positionX - minX
-                    ) * scale + padding
-
-                let y =
-                    CGFloat(
-                        display.positionY - minY
-                    ) * scale + padding
-
-                return (
-                    info: display,
-                    frame: CGRect(
-                        x: x,
-                        y: y,
-                        width: width,
-                        height: height
-                    )
-                )
-            }
-        }
     }
 }

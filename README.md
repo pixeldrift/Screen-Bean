@@ -217,7 +217,7 @@ This will allow a user to photograph an existing display installation and align 
 
 Future versions may support four-point perspective correction and image warping.
 
-The goal is to compensate for photographs taken off access, wide angle lense distortion, etc.
+The goal is to compensate for photographs taken off access, wide angle lens distortion, etc.
 
 Eventually, users may be able to identify the four corners of a photographed display and have Screen Bean rectify the image into the physical workspace.
 
@@ -472,19 +472,19 @@ This allows Screen Bean to restore display-specific configuration between launch
 
 ### Phase 2 — Interactive Physical Workspace
 
-* [ ]	Pan workspace
-* [ ]	Zoom workspace
-* [ ]	Scale to Fit
-* [ ]	Center View
-* [ ]	Physical measurement grid
+* [x]	Pan workspace
+* [x]	Zoom workspace
+* [x]	Scale to Fit
+* [x]	Center View
+* [x]	Physical measurement grid
 * [ ]	Rulers
-* [ ]	Select displays
-* [ ]	Drag displays
+* [x]	Select displays
+* [x]	Drag displays
 * [ ]	Rotate displays
-* [ ]	Edit physical dimensions
+* [x]	Edit physical dimensions
 * [ ]	Display calibration UI
-* [ ]	Display color coding
-* [ ]	Bezel visibility
+* [x]	Display color coding
+* [x]	Bezel visibility
 * [ ]	Display transparency
 
 ### Phase 3 — Visual Calibration
@@ -548,6 +548,14 @@ This allows Screen Bean to restore display-specific configuration between launch
 * [ ]	Calibration reports
 * [ ]	Reusable layout templates
 
+#### DisplayArrangementView
+
+The interactive workspace. Draws the grid and displays from the `PhysicalLayout`, and handles pan, zoom, selection and dragging.
+
+#### DisplayInspectorView
+
+The sidebar for editing the selected display: nickname, physical size, position, color and bezels.
+
 ---
 
 ## Design Principles
@@ -587,9 +595,9 @@ A user should be able to:
 
 The ultimate goal is not simply to provide another display-arrangement utility. It is to create a tool that understands where displays physically exist in space and how their pixels, geometry, and interactions relate to one another.
 
-These display configuration tools can also be used with projectors. The same 4k resolution that is measured in pixels per inch for monitor is often messured in picels per foot on a large projection. This could be used for a "foveated" display, where a lower density projected image is paired as a contextual extension of the main monitor, like peripheral vision. This setup is called a "focus-plus" display.
+These display configuration tools can also be used with projectors. The same 4k resolution that is measured in pixels per inch for monitor is often measured in pixels per foot on a large projection. This could be used for a "foveated" display, where a lower density projected image is paired as a contextual extension of the main monitor, like peripheral vision. This setup is called a "focus-plus" display.
 
 https://www.patrickbaudisch.com/projects/focuspluscontextscreens/applications/index.html
 
-Similar approaches are used in video playback snd routing ststems for live events where multiple projectors and LED walls are combined with arbitary positions, shape, and sizes.
+Similar approaches are used in video playback and routing systems for live events where multiple projectors and LED walls are combined with arbitrary positions, shape, and sizes.
 
