@@ -865,6 +865,28 @@ class DisplayArrangementView: NSView {
         needsDisplay = true
     }
 
+    // MARK: - Wallpaper Export
+    /// Cuts the wallpaper into one native-resolution image per display, or nil if there is no wallpaper.
+    func wallpaperExport() -> WallpaperExport? {
+        guard let source = wallpaperLayer.image,
+              let cgImage = source.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let imageRect = physicalRect(of: wallpaperLayer),
+              imageRect.width > 0 else { return nil }
+        var slices: [WallpaperSlice] = []
+        var neededPPI = 0.0
+        for info in displays {
+            guard let placed = physicalLayout.displays.first(where: { $0.id == info.displayID }),
+                  let rendered = WallpaperSlicer.render(
+                    image: cgImage, imageRect: imageRect,
+                    panelRect: CGRect(x: placed.x, y: placed.y, width: placed.width, height: placed.height),
+                    pixelWidth: info.pixelWidth, pixelHeight: info.pixelHeight
+                  ) else { continue }
+            slices.append(WallpaperSlice(displayID: info.displayID, persistentID: info.persistentID, name: info.nickname, pixelWidth: info.pixelWidth, pixelHeight: info.pixelHeight, image: rendered))
+            neededPPI = max(neededPPI, Double(info.pixelWidth) / max(Double(placed.width), 0.01))
+        }
+        return WallpaperExport(slices: slices, imagePixelsPerInch: Double(cgImage.width) / Double(imageRect.width), neededPixelsPerInch: neededPPI)
+    }
+
     // MARK: - Refresh
     /// Re-reads the connected displays from macOS, keeping the selection if it still exists.
     func reloadDisplays() {

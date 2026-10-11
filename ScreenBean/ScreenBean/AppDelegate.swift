@@ -111,6 +111,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         systemButtonStack.spacing = 8
         systemButtonStack.translatesAutoresizingMaskIntoConstraints = false
         self.mainView = mainView
+        sidebar.exportImagesButton.target = self
+        sidebar.exportImagesButton.action = #selector(exportWallpaperImages)
+        sidebar.applyWallpaperButton.target = self
+        sidebar.applyWallpaperButton.action = #selector(applyWallpaper)
 
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
@@ -147,6 +151,115 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Re-reads the displays from macOS, e.g. after changing orientation in System Settings.
     @objc private func refreshDisplays() {
         mainView?.reloadDisplays()
+    }
+
+    // MARK: - Wallpaper
+
+    private func showAlert(_ title: String, _ message: String, style: NSAlert.Style = .informational) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = style
+        alert.runModal()
+    }
+
+    private func wallpaperExportOrAlert() -> WallpaperExport? {
+        guard let export = mainView?.wallpaperExport(), !export.slices.isEmpty else {
+            showAlert("No wallpaper", "Choose or drop a wallpaper image in the Spanned Wallpaper section first.")
+            return nil
+        }
+        return export
+    }
+
+    private func sizeSummary(_ export: WallpaperExport) -> String {
+        var lines = export.slices.map { "\($0.name): \($0.pixelWidth) × \($0.pixelHeight) px" }
+        if export.isUpscaled {
+            lines.append("\nThe wallpaper has \(Int(export.imagePixelsPerInch)) pixels per inch, but your sharpest display needs \(Int(export.neededPixelsPerInch)). It will be enlarged and may look soft.")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func pngData(_ image: CGImage) -> Data? {
+        NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+    }
+
+    /// A file-name-safe version of a display name.
+    private func fileSafe(_ name: String) -> String {
+        let cleaned = name.map { $0.isLetter || $0.isNumber ? String($0) : "-" }.joined()
+        return cleaned.isEmpty ? "Display" : cleaned
+    }
+
+    /// Saves one PNG per display, named after the display and sized to its native resolution.
+    @objc private func exportWallpaperImages() {
+        guard let export = wallpaperExportOrAlert() else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.prompt = "Export Here"
+        panel.message = "Choose a folder for the wallpaper images, one per display."
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+
+        var failures: [String] = []
+        for (index, slice) in export.slices.enumerated() {
+            let name = "\(fileSafe(slice.name))-\(slice.pixelWidth)x\(slice.pixelHeight)\(export.slices.count > 1 ? "-\(index + 1)" : "").png"
+            do {
+                guard let data = pngData(slice.image) else { throw CocoaError(.fileWriteUnknown) }
+                try data.write(to: folder.appendingPathComponent(name), options: .atomic)
+            } catch {
+                failures.append("\(slice.name): \(error.localizedDescription)")
+            }
+        }
+        if failures.isEmpty {
+            showAlert("Exported \(export.slices.count) image\(export.slices.count == 1 ? "" : "s")", sizeSummary(export))
+        } else {
+            showAlert("Some images could not be saved", failures.joined(separator: "\n"), style: .warning)
+        }
+    }
+
+    /// Sets each display's desktop picture to its slice of the wallpaper.
+    @objc private func applyWallpaper() {
+        guard let export = wallpaperExportOrAlert() else { return }
+        let confirm = NSAlert()
+        confirm.messageText = "Apply wallpaper to \(export.slices.count) display\(export.slices.count == 1 ? "" : "s")?"
+        confirm.informativeText = "This replaces the current desktop picture on each display.\n\n" + sizeSummary(export)
+        confirm.addButton(withTitle: "Apply")
+        confirm.addButton(withTitle: "Cancel")
+        guard confirm.runModal() == .alertFirstButtonReturn else { return }
+
+        guard let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
+        let folder = support.appendingPathComponent("ScreenBean/Wallpaper", isDirectory: true)
+        // Clear earlier slices so the folder only holds the current set.
+        try? FileManager.default.removeItem(at: folder)
+        do { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
+        catch { showAlert("Could not apply wallpaper", error.localizedDescription, style: .warning); return }
+
+        let stamp = Int(Date().timeIntervalSince1970)
+        var applied = 0
+        var failures: [String] = []
+        for slice in export.slices {
+            guard let screen = NSScreen.screens.first(where: { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == slice.displayID }) else {
+                failures.append("\(slice.name): not currently active (for example, mirrored)")
+                continue
+            }
+            do {
+                guard let data = pngData(slice.image) else { throw CocoaError(.fileWriteUnknown) }
+                let url = folder.appendingPathComponent("\(fileSafe(slice.name))-\(stamp).png")
+                try data.write(to: url, options: .atomic)
+                try NSWorkspace.shared.setDesktopImageURL(url, for: screen, options: [
+                    .imageScaling: NSImageScaling.scaleProportionallyUpOrDown.rawValue,
+                    .allowClipping: false
+                ])
+                applied += 1
+            } catch {
+                failures.append("\(slice.name): \(error.localizedDescription)")
+            }
+        }
+        if failures.isEmpty {
+            showAlert("Wallpaper applied", "Set the desktop picture on \(applied) display\(applied == 1 ? "" : "s").")
+        } else {
+            showAlert("Applied to \(applied) of \(export.slices.count) displays", failures.joined(separator: "\n") + "\n\nYou can use Export Images and set the pictures in System Settings instead.", style: .warning)
+        }
     }
 
     @objc private func openDisplaySettings() {

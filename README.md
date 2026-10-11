@@ -510,11 +510,11 @@ macOS has no public API for changing a display's rotation, so these edit Screen 
 * [x]	Preview wallpaper across displays
 * [x]	Toggle preview clipped to the displays
 * [x]	Lock wallpaper
-* [ ]	Account for display rotation
-* [ ]	Calculate output resolution
-* [ ]	Slice unified image into per-display images
-* [ ]	Export display-specific wallpaper files
-* [ ]	Apply wallpaper to each display
+* [x]	Account for display rotation
+* [x]	Calculate output resolution
+* [x]	Slice unified image into per-display images
+* [x]	Export display-specific wallpaper files
+* [x]	Apply wallpaper to each display
 
 ### Phase 4 — Visual Calibration
 
