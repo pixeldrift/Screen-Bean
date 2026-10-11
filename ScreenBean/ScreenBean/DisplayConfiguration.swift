@@ -89,7 +89,7 @@ struct DisplayConfiguration: Codable {
         isCalibrated = try values.decodeIfPresent(Bool.self, forKey: .isCalibrated) ?? false
         colorHex = try values.decodeIfPresent(String.self, forKey: .colorHex) ?? DisplayDefaults.colorHex
         // Settings saved before the palette existed count as custom only if they changed the color.
-        isColorCustom = try values.decodeIfPresent(Bool.self, forKey: .isColorCustom) ?? (colorHex != DisplayDefaults.colorHex)
+        isColorCustom = try values.decodeIfPresent(Bool.self, forKey: .isColorCustom) ?? (colorHex != DisplayDefaults.legacyColorHex)
         uniformBezel = try values.decodeIfPresent(Bool.self, forKey: .uniformBezel) ?? true
         bezelTop = try values.decodeIfPresent(Double.self, forKey: .bezelTop) ?? DisplayDefaults.bezelInches
         bezelBottom = try values.decodeIfPresent(Double.self, forKey: .bezelBottom) ?? DisplayDefaults.bezelInches

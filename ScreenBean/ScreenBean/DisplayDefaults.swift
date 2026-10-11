@@ -10,14 +10,14 @@ import Cocoa
 enum DisplayDefaults {
     /// Colors handed out to displays in order, unless the user picks one.
     static let palette = [
-        "28B7B0", // teal
-        "5B9BD5", // blue
-        "F5A04A", // orange
-        "A77BD6", // purple
-        "EF7B9B", // pink
-        "7CC567", // green
-        "F2CB4B", // yellow
-        "E8715F"  // coral
+        "A8D5CE", // soft teal
+        "B9C5EB", // periwinkle
+        "F2C4A7", // peach
+        "BED5AC", // sage
+        "D3BCE8", // lilac
+        "E9B9C2", // rose
+        "E9D995", // butter
+        "A9CDE8"  // sky
     ]
 
     /// The default color for the display at `index`, cycling through the palette.
@@ -26,6 +26,9 @@ enum DisplayDefaults {
     }
 
     static let colorHex = palette[0]
+
+    /// The single default color used before the palette existed.
+    static let legacyColorHex = "28B7B0"
     static let bezelColorHex = "4A4A4A"
     static let bezelInches = 0.25
 }
