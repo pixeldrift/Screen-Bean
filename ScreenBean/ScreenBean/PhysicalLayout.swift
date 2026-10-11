@@ -23,12 +23,12 @@ struct PhysicalLayout {
         let id: CGDirectDisplayID
         var nickname: String
         var persistentID: String = ""
-        var colorHex: String = "28B7B0"
+        var colorHex: String = DisplayDefaults.colorHex
         var uniformBezel: Bool = true
-        var bezelTop: CGFloat = 0.25
-        var bezelBottom: CGFloat = 0.25
-        var bezelLeft: CGFloat = 0.25
-        var bezelRight: CGFloat = 0.25
+        var bezelTop: CGFloat = CGFloat(DisplayDefaults.bezelInches)
+        var bezelBottom: CGFloat = CGFloat(DisplayDefaults.bezelInches)
+        var bezelLeft: CGFloat = CGFloat(DisplayDefaults.bezelInches)
+        var bezelRight: CGFloat = CGFloat(DisplayDefaults.bezelInches)
 
         /// Position of the upper-left corner in physical inches.
         var x: CGFloat
@@ -95,21 +95,6 @@ struct PhysicalLayout {
     }
 
     // MARK: - Coordinate Conversion
-
-    /// Converts a point from Screen Bean physical coordinates
-    /// into view coordinates.
-    ///
-    /// `scale` is pixels/points per physical inch.
-    func pointInView(
-        x: CGFloat,
-        y: CGFloat,
-        scale: CGFloat
-    ) -> CGPoint {
-        CGPoint(
-            x: x * scale,
-            y: y * scale
-        )
-    }
 
     /// Returns the rectangle for a display in view coordinates.
     func rectInView(

@@ -35,12 +35,12 @@ struct DisplayConfiguration: Codable {
         yInches: Double,
         rotation: Double,
         isCalibrated: Bool,
-        colorHex: String = "28B7B0",
+        colorHex: String = DisplayDefaults.colorHex,
         uniformBezel: Bool = true,
-        bezelTop: Double = 0.25,
-        bezelBottom: Double = 0.25,
-        bezelLeft: Double = 0.25,
-        bezelRight: Double = 0.25
+        bezelTop: Double = DisplayDefaults.bezelInches,
+        bezelBottom: Double = DisplayDefaults.bezelInches,
+        bezelLeft: Double = DisplayDefaults.bezelInches,
+        bezelRight: Double = DisplayDefaults.bezelInches
     ) {
         self.persistentID = persistentID
         self.nickname = nickname
@@ -74,11 +74,11 @@ struct DisplayConfiguration: Codable {
         yInches = try values.decodeIfPresent(Double.self, forKey: .yInches) ?? 0
         rotation = try values.decodeIfPresent(Double.self, forKey: .rotation) ?? 0
         isCalibrated = try values.decodeIfPresent(Bool.self, forKey: .isCalibrated) ?? false
-        colorHex = try values.decodeIfPresent(String.self, forKey: .colorHex) ?? "28B7B0"
+        colorHex = try values.decodeIfPresent(String.self, forKey: .colorHex) ?? DisplayDefaults.colorHex
         uniformBezel = try values.decodeIfPresent(Bool.self, forKey: .uniformBezel) ?? true
-        bezelTop = try values.decodeIfPresent(Double.self, forKey: .bezelTop) ?? 0.25
-        bezelBottom = try values.decodeIfPresent(Double.self, forKey: .bezelBottom) ?? 0.25
-        bezelLeft = try values.decodeIfPresent(Double.self, forKey: .bezelLeft) ?? 0.25
-        bezelRight = try values.decodeIfPresent(Double.self, forKey: .bezelRight) ?? 0.25
+        bezelTop = try values.decodeIfPresent(Double.self, forKey: .bezelTop) ?? DisplayDefaults.bezelInches
+        bezelBottom = try values.decodeIfPresent(Double.self, forKey: .bezelBottom) ?? DisplayDefaults.bezelInches
+        bezelLeft = try values.decodeIfPresent(Double.self, forKey: .bezelLeft) ?? DisplayDefaults.bezelInches
+        bezelRight = try values.decodeIfPresent(Double.self, forKey: .bezelRight) ?? DisplayDefaults.bezelInches
     }
 }

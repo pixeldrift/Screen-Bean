@@ -43,10 +43,6 @@ class DisplayArrangementView: NSView {
     
     // MARK: - Setup
 
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-    }
-
     override func layout() {
         super.layout()
 
@@ -158,21 +154,6 @@ class DisplayArrangementView: NSView {
     // MARK: - Coordinate Conversion
     private var pointsPerInch: CGFloat {
         basePointsPerInch * zoom
-    }
-    private func physicalPointToView(
-        x: CGFloat,
-        y: CGFloat
-    ) -> CGPoint {
-        let point =
-            physicalLayout.pointInView(
-                x: x,
-                y: y,
-                scale: pointsPerInch
-            )
-        return CGPoint(
-            x: point.x + viewOffset.x,
-            y: point.y + viewOffset.y
-        )
     }
     private func physicalRectToView(
         _ display: PhysicalLayout.Display
@@ -371,7 +352,7 @@ class DisplayArrangementView: NSView {
         context.setFillColor(NSColor(calibratedWhite: 0.08, alpha: 1).cgColor)
         context.fill(innerFrame)
 
-        let baseColor = Self.color(fromHex: display.colorHex)
+        let baseColor = NSColor(displayHex: display.colorHex)
         let light = baseColor.blended(withFraction: 0.20, of: .white) ?? baseColor
         let dark = baseColor.blended(withFraction: 0.24, of: .black) ?? baseColor
         let colors = [light.cgColor, baseColor.cgColor, dark.cgColor] as CFArray
@@ -600,7 +581,7 @@ class DisplayArrangementView: NSView {
         if let height, height > 0.1 { displays[i].physicalHeightInches = height; physicalLayout.displays[j].height = height }
         if let x { physicalLayout.displays[j].x = x }
         if let y { physicalLayout.displays[j].y = y }
-        if let color { displays[i].colorHex = Self.hex(from: color); physicalLayout.displays[j].colorHex = Self.hex(from: color) }
+        if let color { displays[i].colorHex = color.displayHex; physicalLayout.displays[j].colorHex = color.displayHex }
         if let uniformBezel { displays[i].uniformBezel = uniformBezel; physicalLayout.displays[j].uniformBezel = uniformBezel }
         if let bezelTop { displays[i].bezelTop = bezelTop; physicalLayout.displays[j].bezelTop = bezelTop }
         if let bezelBottom { displays[i].bezelBottom = bezelBottom; physicalLayout.displays[j].bezelBottom = bezelBottom }
@@ -622,16 +603,6 @@ class DisplayArrangementView: NSView {
         configuration.bezelTop = displays[i].bezelTop; configuration.bezelBottom = displays[i].bezelBottom
         configuration.bezelLeft = displays[i].bezelLeft; configuration.bezelRight = displays[i].bezelRight
         if save { DisplayConfigurationStore.shared.save(configuration) }
-    }
-
-    private static func color(fromHex hex: String) -> NSColor {
-        let v = UInt64(hex, radix: 16) ?? 0x28B7B0
-        return NSColor(red: CGFloat((v >> 16) & 255) / 255, green: CGFloat((v >> 8) & 255) / 255, blue: CGFloat(v & 255) / 255, alpha: 1)
-    }
-
-    private static func hex(from color: NSColor) -> String {
-        guard let c = color.usingColorSpace(.deviceRGB) else { return "28B7B0" }
-        return String(format: "%02X%02X%02X", Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
     }
 
     // MARK: - Scroll Zoom
