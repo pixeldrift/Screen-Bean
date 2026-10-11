@@ -119,6 +119,13 @@ final class GuideStore {
         changed()
     }
 
+    /// Puts a whole set of guides back, as undo does.
+    func replaceAll(_ newGuides: [Guide]) {
+        guides = newGuides
+        save()
+        changed()
+    }
+
     func remove(_ id: UUID) {
         guides.removeAll { $0.id == id }
         save()

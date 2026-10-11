@@ -155,3 +155,5 @@ struct PhysicalLayout {
             + max(first.y, second.y)
     }
 }
+
+extension PhysicalLayout.Display: Equatable {}

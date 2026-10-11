@@ -1056,7 +1056,7 @@ class DisplayArrangementView: NSView {
         if event.keyCode == 51 || event.keyCode == 117, !selectedGuideIDs.isEmpty || hoverGuideID != nil {
             // Delete removes the selected guides, or the one under the mouse if none are selected.
             let doomed = selectedGuideIDs.isEmpty ? [hoverGuideID].compactMap { $0 } : Array(selectedGuideIDs)
-            for id in doomed { GuideStore.shared.remove(id) }
+            UndoCenter.shared.perform(doomed.count > 1 ? "Delete Guides" : "Delete Guide") { for id in doomed { GuideStore.shared.remove(id) } }
             selectedGuideIDs = []
             hoverGuideID = nil
         } else {
@@ -1096,17 +1096,19 @@ class DisplayArrangementView: NSView {
     }
 
     @objc private func deleteGuideFromMenu(_ sender: NSMenuItem) {
-        if let id = (sender.representedObject as? GuideMenuPayload)?.id { GuideStore.shared.remove(id) }
+        if let id = (sender.representedObject as? GuideMenuPayload)?.id { UndoCenter.shared.perform("Delete Guide") { GuideStore.shared.remove(id) } }
     }
 
     @objc private func addGuideFromMenu(_ sender: NSMenuItem) {
         guard let payload = sender.representedObject as? GuideMenuPayload, let axis = payload.axis else { return }
         GuideSettings.showCustomGuides = true
-        GuideStore.shared.add(Guide(axis: axis, position: payload.position))
-        GuideStore.shared.save()
+        UndoCenter.shared.perform("Add Guide") {
+            GuideStore.shared.add(Guide(axis: axis, position: payload.position))
+            GuideStore.shared.save()
+        }
     }
 
-    @objc private func clearGuidesFromMenu() { GuideStore.shared.removeAll() }
+    @objc private func clearGuidesFromMenu() { UndoCenter.shared.perform("Clear Guides") { GuideStore.shared.removeAll() } }
 
     // MARK: - Guides
     /// Every guide to draw: edge guides from the displays, then custom ones.
@@ -1430,6 +1432,7 @@ class DisplayArrangementView: NSView {
             GapPlacementStore.setPlacement(Double((startPosition + along) / span), for: m.key)
         }
 
+        didDrag = true
         // Move the display at the grabbed end without letting the displays overlap or the gap pass zero.
         guard drag.zone != .middle, let startRect = drag.startRect else { needsDisplay = true; return }
         let grabbed = drag.zone == .first ? m.first : m.second
@@ -1512,6 +1515,53 @@ class DisplayArrangementView: NSView {
             NSBezierPath(roundedRect: label, xRadius: 5, yRadius: 5).fill()
             gapLabel(m).draw(at: CGPoint(x: label.minX + 6, y: label.minY + 2))
         }
+    }
+
+    // MARK: - Undo
+    private var undoBefore: WorkspaceSnapshot?
+    private var undoName = "Edit Layout"
+
+    func captureSnapshot() -> WorkspaceSnapshot {
+        WorkspaceSnapshot(
+            displays: displays,
+            layout: physicalLayout.displays,
+            guides: GuideStore.shared.guides,
+            reference: ImageLayerState(frame: referenceLayer.frame, isLocked: referenceLayer.isLocked),
+            wallpaper: ImageLayerState(frame: wallpaperLayer.frame, isLocked: wallpaperLayer.isLocked)
+        )
+    }
+
+    /// Puts everything undo covers back to `snapshot` and saves it.
+    func restoreSnapshot(_ snapshot: WorkspaceSnapshot) {
+        suppressDisplayRebuild = true
+        displays = snapshot.displays
+        suppressDisplayRebuild = false
+        physicalLayout.displays = snapshot.layout
+        GuideStore.shared.replaceAll(snapshot.guides)
+        for (slot, state) in [(ImageLayerSlot.referenceImage, snapshot.reference), (.wallpaper, snapshot.wallpaper)] {
+            if layer(slot).image != nil, let frame = state.frame {
+                setFrame(frame, for: slot)
+                onImageFrameChanged?(slot, frame)
+            }
+            if layer(slot).isLocked != state.isLocked {
+                setImageLocked(state.isLocked, for: slot)
+                onImageLockChanged?(slot, state.isLocked)
+            }
+        }
+        for display in displays { syncLayoutToDisplay(id: display.displayID, save: true) }
+        selectedDisplayIDs = selectedDisplayIDs.filter { id in displays.contains(where: { $0.displayID == id }) }
+        selectedGuideIDs = selectedGuideIDs.filter { id in GuideStore.shared.guide(withID: id) != nil }
+        onSelectionChanged?(selectedDisplayInfo())
+        if let info = selectedDisplayInfo(), let item = physicalLayout.displays.first(where: { $0.id == info.displayID }) {
+            onDisplayValuesChanged?(info, item.centerX, item.centerY)
+        }
+        needsDisplay = true
+    }
+
+    /// Ends a mouse gesture, recording it as an undo step if it changed anything.
+    private func finishGesture() {
+        if let before = undoBefore { UndoCenter.shared.record(undoName, before: before) }
+        undoBefore = nil
     }
 
     // MARK: - Group Selection
@@ -1864,6 +1914,8 @@ class DisplayArrangementView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         window?.makeFirstResponder(self)
         let extending = event.modifierFlags.contains(.shift)
+        undoBefore = captureSnapshot()
+        undoName = "Edit Layout"
         groupDisplayStart = [:]
         groupGuideStart = [:]
         pendingCollapse = nil
@@ -1871,6 +1923,7 @@ class DisplayArrangementView: NSView {
 
         // Dragging out of a ruler creates a guide.
         if let axis = rulerAxis(at: point) {
+            undoName = "Add Guide"
             GuideSettings.showCustomGuides = true
             let guide = Guide(axis: axis, position: guidePosition(for: point, axis: axis))
             GuideStore.shared.add(guide)
@@ -1895,6 +1948,7 @@ class DisplayArrangementView: NSView {
                 selectedGuideIDs = [guide.id]
             }
             captureGroup()
+            undoName = isGroupSelected ? "Move Selection" : "Move Guide"
             guideDrag = guide.id
             guideDragPoint = point
             pushCursor(guideCursor(guide.axis))
@@ -1908,6 +1962,7 @@ class DisplayArrangementView: NSView {
                 select(.display(grabbed))
                 rect = physicalOuterRect(of: .display(grabbed))
             }
+            undoName = "Move Display"
             gapDrag = GapDrag(measurement: hit.measurement, zone: hit.zone, startPoint: point, startRect: rect)
             pushCursor(gapCursor(hit.measurement, zone: hit.zone))
             return
@@ -1917,6 +1972,7 @@ class DisplayArrangementView: NSView {
         if let locked = physicalLayout.displays.reversed().first(where: {
             ($0.isLocked || selectedDisplayIDs.contains($0.id)) && lockIconRect(in: physicalRectToView($0)).contains(point)
         }) {
+            undoName = locked.isLocked ? "Unlock Display" : "Lock Display"
             select(.display(locked.id))
             updateSelectedDisplay(DisplayEdit(isLocked: !locked.isLocked))
             return
@@ -1924,6 +1980,7 @@ class DisplayArrangementView: NSView {
 
         // Image lock icons behave the same way.
         if let slot = imageSlots.reversed().first(where: { imageLockIconRect($0)?.contains(point) == true }) {
+            undoName = layer(slot).isLocked ? "Unlock Image" : "Lock Image"
             select(.image(slot))
             let locked = !layer(slot).isLocked
             setImageLocked(locked, for: slot)
@@ -1935,6 +1992,7 @@ class DisplayArrangementView: NSView {
         if let target = rotateHit(at: point), case .image = target, let start = physicalOuterRect(of: target) {
             select(target)
             isPanning = false
+            undoName = "Rotate Image"
             dragTarget = target
             dragStartPoint = point
             dragStartRect = start
@@ -1964,6 +2022,9 @@ class DisplayArrangementView: NSView {
             dragMode = hit.handle.map(DragMode.resize) ?? .move
             dragStartPoint = point
             dragStartRect = start
+            var subject = "Display"
+            if case .image = hit.target { subject = "Image" }
+            if case .move = dragMode { undoName = isGroupSelected ? "Move Selection" : "Move \(subject)" } else { undoName = "Resize \(subject)" }
             if case .resize(let handle) = dragMode {
                 pushCursor(resizeCursor(handle, rotation: rotation(of: hit.target)))
             } else if case .display = hit.target {
@@ -2146,6 +2207,7 @@ class DisplayArrangementView: NSView {
         with event: NSEvent
     ) {
         popCursor()
+        defer { finishGesture() }
         if gapDrag != nil {
             gapDrag = nil
             syncSelectedLayoutToDisplay(save: true)
@@ -2195,6 +2257,7 @@ class DisplayArrangementView: NSView {
         guard let id = selectedDisplayID, let i = displays.firstIndex(where: { $0.displayID == id }), let j = physicalLayout.displays.firstIndex(where: { $0.id == id }) else { return }
         // A locked display only accepts the change that unlocks it.
         if displays[i].isLocked && edit.isLocked == nil { return }
+        let before = captureSnapshot()
         suppressDisplayRebuild = true
         if let nickname = edit.nickname, !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { displays[i].nickname = nickname; physicalLayout.displays[j].nickname = nickname }
         // Position is the display's center, so resizing grows it evenly around that point.
@@ -2217,6 +2280,8 @@ class DisplayArrangementView: NSView {
         syncSelectedLayoutToDisplay(save: true)
         needsDisplay = true
         onDisplayValuesChanged?(displays[i], physicalLayout.displays[j].centerX, physicalLayout.displays[j].centerY)
+        // A click on a lock icon is recorded by its mouse gesture instead.
+        if undoBefore == nil { UndoCenter.shared.record("Edit Display", before: before, coalesceKey: "inspector-\(id)-\(edit.undoKey)") }
     }
 
     private func syncSelectedLayoutToDisplay(save: Bool) {

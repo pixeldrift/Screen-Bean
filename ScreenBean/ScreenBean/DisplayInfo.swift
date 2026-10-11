@@ -299,3 +299,5 @@ struct DisplayInfo {
         isLocked = configuration.isLocked
     }
 }
+
+extension DisplayInfo: Equatable {}

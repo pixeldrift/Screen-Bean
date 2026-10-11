@@ -122,5 +122,5 @@ final class SettingsPanel: NSView {
     @objc private func customGuidesToggled() { GuideSettings.showCustomGuides = customGuidesCheckbox.state == .on }
     @objc private func snapGuidesToggled() { GuideSettings.snapToGuides = snapGuidesCheckbox.state == .on }
     @objc private func snapBezelsToggled() { GuideSettings.snapToBezels = snapBezelsCheckbox.state == .on }
-    @objc private func clearGuides() { GuideStore.shared.removeAll() }
+    @objc private func clearGuides() { UndoCenter.shared.perform("Clear Guides") { GuideStore.shared.removeAll() } }
 }

@@ -7,7 +7,7 @@
 import Cocoa
 import CoreGraphics
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow!
     private var mainView: DisplayArrangementView?
     private let overlays = DisplayOverlayManager()
@@ -27,6 +27,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         for name in [GuideSettings.didChange, GuideStore.didChange] {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in self?.refreshOverlays() }
         }
+        // Edit: undo and redo for layout changes, plus the usual text editing commands.
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        let editMenu = NSMenu(title: "Edit")
+        let undoItem = NSMenuItem(title: "Undo", action: #selector(undoAction), keyEquivalent: "z")
+        undoItem.target = self
+        let redoItem = NSMenuItem(title: "Redo", action: #selector(redoAction), keyEquivalent: "z")
+        redoItem.keyEquivalentModifierMask = [.command, .shift]
+        redoItem.target = self
+        editMenu.addItem(undoItem)
+        editMenu.addItem(redoItem)
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenuItem.submenu = editMenu
         let viewMenuItem = NSMenuItem()
         mainMenu.addItem(viewMenuItem)
         let viewMenu = NSMenu(title: "View")
@@ -52,6 +69,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         // Displays first, so new image frames can start centered on the arrangement.
         mainView.displays = DisplayInfo.detectDisplays()
+        UndoCenter.shared.capture = { [weak mainView] in mainView?.captureSnapshot() }
+        UndoCenter.shared.restore = { [weak mainView] in mainView?.restoreSnapshot($0) }
         let sidebar = SidebarView()
         let inspector = sidebar.inspector
         let store = ImageLayerStore.shared
@@ -85,12 +104,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             panel.setLocked(locked)
             setLayer(slot) { $0.image = image; $0.blend = ImageLayerBlend(value: blend); $0.frame = store.loadFrame(slot); $0.isLocked = locked }
             panel.onLockChanged = { locked in
-                store.saveLocked(locked, for: slot)
-                setLayer(slot) { $0.isLocked = locked }
+                UndoCenter.shared.perform(locked ? "Lock Image" : "Unlock Image") {
+                    store.saveLocked(locked, for: slot)
+                    setLayer(slot) { $0.isLocked = locked }
+                }
             }
             panel.onFrameChanged = { frame in
-                setLayer(slot) { $0.frame = frame }
-                store.saveFrame(frame, for: slot)
+                UndoCenter.shared.perform("Edit Image", coalesceKey: "image-\(slot.rawValue)") {
+                    setLayer(slot) { $0.frame = frame }
+                    store.saveFrame(frame, for: slot)
+                }
             }
             panel.onImageChanged = { image, data in
                 store.saveImageData(data, for: slot)
@@ -182,6 +205,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 680), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = "ScreenBean"
+        window.delegate = self
         window.contentView = container
         window.minSize = NSSize(width: 600, height: 400)
         window.center()
@@ -250,9 +274,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         GuideSettings.showEdgeGuides = !allOn
         GuideSettings.showCustomGuides = !allOn
     }
-    @objc private func clearGuides() { GuideStore.shared.removeAll() }
+    @objc private func clearGuides() { UndoCenter.shared.perform("Clear Guides") { GuideStore.shared.removeAll() } }
+
+    // MARK: - Undo
+
+    @objc private func undoAction() { UndoCenter.shared.undo() }
+    @objc private func redoAction() { UndoCenter.shared.redo() }
+
+    func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? { UndoCenter.shared.manager }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(undoAction) {
+            item.title = UndoCenter.shared.manager.canUndo ? UndoCenter.shared.manager.undoMenuItemTitle : "Undo"
+            return UndoCenter.shared.manager.canUndo
+        }
+        if item.action == #selector(redoAction) {
+            item.title = UndoCenter.shared.manager.canRedo ? UndoCenter.shared.manager.redoMenuItemTitle : "Redo"
+            return UndoCenter.shared.manager.canRedo
+        }
         if item.action == #selector(toggleGapMeasurements) { item.state = GuideSettings.showGapMeasurements ? .on : .off }
         if item.action == #selector(toggleGuides) { item.state = GuideSettings.showEdgeGuides && GuideSettings.showCustomGuides ? .on : .off }
         if item.action == #selector(clearGuides) { return !GuideStore.shared.guides.isEmpty }
