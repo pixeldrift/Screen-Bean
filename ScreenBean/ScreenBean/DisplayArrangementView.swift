@@ -1105,7 +1105,7 @@ class DisplayArrangementView: NSView {
         if let height = edit.height, height > 0.1 { displays[i].physicalHeightInches = height; physicalLayout.displays[j].height = CGFloat(height) }
         physicalLayout.displays[j].x = (edit.x.map { CGFloat($0) } ?? center.x) - physicalLayout.displays[j].width / 2
         physicalLayout.displays[j].y = (edit.y.map { CGFloat($0) } ?? center.y) - physicalLayout.displays[j].height / 2
-        if let color = edit.color { displays[i].colorHex = color.displayHex; physicalLayout.displays[j].colorHex = color.displayHex }
+        if let color = edit.color { displays[i].isColorCustom = true; displays[i].colorHex = color.displayHex; physicalLayout.displays[j].colorHex = color.displayHex }
         if let bezelColor = edit.bezelColor { displays[i].bezelColorHex = bezelColor.displayHex; physicalLayout.displays[j].bezelColorHex = bezelColor.displayHex }
         if let uniformBezel = edit.uniformBezel { displays[i].uniformBezel = uniformBezel; physicalLayout.displays[j].uniformBezel = uniformBezel }
         if let bezelTop = edit.bezelTop { displays[i].bezelTop = bezelTop; physicalLayout.displays[j].bezelTop = CGFloat(bezelTop) }

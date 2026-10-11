@@ -8,7 +8,24 @@
 import Cocoa
 
 enum DisplayDefaults {
-    static let colorHex = "28B7B0"
+    /// Colors handed out to displays in order, unless the user picks one.
+    static let palette = [
+        "28B7B0", // teal
+        "5B9BD5", // blue
+        "F5A04A", // orange
+        "A77BD6", // purple
+        "EF7B9B", // pink
+        "7CC567", // green
+        "F2CB4B", // yellow
+        "E8715F"  // coral
+    ]
+
+    /// The default color for the display at `index`, cycling through the palette.
+    static func paletteColor(at index: Int) -> String {
+        palette[((index % palette.count) + palette.count) % palette.count]
+    }
+
+    static let colorHex = palette[0]
     static let bezelColorHex = "4A4A4A"
     static let bezelInches = 0.25
 }

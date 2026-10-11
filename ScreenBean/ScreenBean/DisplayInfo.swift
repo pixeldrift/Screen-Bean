@@ -48,6 +48,8 @@ struct DisplayInfo {
     var isPortrait: Bool { pixelHeight > pixelWidth }
 
     var colorHex: String = DisplayDefaults.colorHex
+    /// True once the user has picked this display's color; otherwise it follows the palette.
+    var isColorCustom: Bool = false
     var uniformBezel: Bool = true
     var bezelTop: Double = DisplayDefaults.bezelInches
     var bezelBottom: Double = DisplayDefaults.bezelInches
@@ -169,6 +171,8 @@ struct DisplayInfo {
                     swap(&info.physicalWidthInches, &info.physicalHeightInches)
                 }
             }
+            // Displays without a color of their own take the next palette color.
+            if !info.isColorCustom { info.colorHex = DisplayDefaults.paletteColor(at: infos.count) }
             infos.append(info)
         }
 
@@ -252,6 +256,7 @@ struct DisplayInfo {
             rotation: 0,
             isCalibrated: isCalibrated,
             colorHex: colorHex,
+            isColorCustom: isColorCustom,
             uniformBezel: uniformBezel,
             bezelTop: bezelTop,
             bezelBottom: bezelBottom,
@@ -278,6 +283,7 @@ struct DisplayInfo {
 
         isCalibrated = configuration.isCalibrated
         colorHex = configuration.colorHex
+        isColorCustom = configuration.isColorCustom
         uniformBezel = configuration.uniformBezel
         bezelTop = configuration.bezelTop
         bezelBottom = configuration.bezelBottom
