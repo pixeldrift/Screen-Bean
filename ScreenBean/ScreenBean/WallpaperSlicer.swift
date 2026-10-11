@@ -46,7 +46,7 @@ enum WallpaperSlicer {
     }
 
     /// Renders the part of the wallpaper under one display. Areas the wallpaper doesn't reach are black.
-    static func render(image: CGImage, imageRect: CGRect, rotationDegrees: Double = 0, panelRect: CGRect, pixelWidth: Int, pixelHeight: Int) -> CGImage? {
+    static func render(image: CGImage, imageRect: CGRect, rotationDegrees: Double = 0, flipHorizontal: Bool = false, flipVertical: Bool = false, panelRect: CGRect, pixelWidth: Int, pixelHeight: Int) -> CGImage? {
         guard pixelWidth > 0, pixelHeight > 0, panelRect.width > 0, panelRect.height > 0,
               let space = CGColorSpace(name: CGColorSpace.sRGB),
               let context = CGContext(
@@ -58,13 +58,14 @@ enum WallpaperSlicer {
         context.fill(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
         context.interpolationQuality = .high
         let target = pixelRect(imageRect: imageRect, panelRect: panelRect, pixelSize: CGSize(width: pixelWidth, height: pixelHeight))
-        if rotationDegrees == 0 {
+        if rotationDegrees == 0 && !flipHorizontal && !flipVertical {
             context.draw(image, in: target)
         } else {
-            // The image is turned about its own center.
+            // The image is flipped, then turned, about its own center.
             context.saveGState()
             context.translateBy(x: target.midX, y: target.midY)
             context.rotate(by: CGFloat(rotationDegrees) * .pi / 180)
+            context.scaleBy(x: flipHorizontal ? -1 : 1, y: flipVertical ? -1 : 1)
             context.draw(image, in: CGRect(x: -target.width / 2, y: -target.height / 2, width: target.width, height: target.height))
             context.restoreGState()
         }

@@ -26,6 +26,8 @@ final class DisplayOverlayManager {
 
     /// Per-display wallpaper slices shown full screen while previewing; nil when not previewing.
     private(set) var previewImages: [CGDirectDisplayID: CGImage]?
+    /// A live preview stays up and follows edits, sitting below the app's window, until it is switched off.
+    private(set) var previewIsLive = false
 
     /// Called after a click or key press ends identify or preview, so buttons can reset.
     var onModesStopped: (() -> Void)?
@@ -58,14 +60,23 @@ final class DisplayOverlayManager {
         refresh()
     }
 
-    func showPreview(_ images: [CGDirectDisplayID: CGImage]) {
+    func showPreview(_ images: [CGDirectDisplayID: CGImage], live: Bool = false) {
         previewImages = images
+        previewIsLive = live
         refresh()
         updateMonitors()
     }
 
+    /// Swaps in new slices for a live preview without changing how it behaves.
+    func updatePreviewImages(_ images: [CGDirectDisplayID: CGImage]) {
+        guard previewImages != nil else { return }
+        previewImages = images
+        refresh()
+    }
+
     func hidePreview() {
         previewImages = nil
+        previewIsLive = false
         refresh()
         updateMonitors()
     }
@@ -90,6 +101,8 @@ final class DisplayOverlayManager {
             wanted.insert(identity.id)
             let window = windows[identity.id] ?? makeWindow()
             windows[identity.id] = window
+            // A live preview sits below the app's window (which is raised above it) so the interface stays usable.
+            window.level = previewIsLive && previewImages != nil ? .floating : .screenSaver
             window.setFrame(screen.frame, display: false)
             (window.contentView as? OverlayView)?.configure(identity, showsIdentity: showsIdentity, showsBorder: showsBorder, preview: preview, guides: showsGuides ? guides : [], panel: panels[identity.id])
             window.orderFrontRegardless()
@@ -116,7 +129,7 @@ final class DisplayOverlayManager {
 
     // MARK: - Ending on input
 
-    private var modesActive: Bool { identifyEnabled || previewImages != nil }
+    private var modesActive: Bool { identifyEnabled || (previewImages != nil && !previewIsLive) }
 
     private func updateMonitors() {
         modesActive ? startMonitors() : stopMonitors()
@@ -154,7 +167,7 @@ final class DisplayOverlayManager {
     private func stopModes() {
         guard modesActive else { return }
         identifyEnabled = false
-        previewImages = nil
+        if !previewIsLive { previewImages = nil }
         refresh()
         stopMonitors()
         onModesStopped?()
@@ -218,9 +231,9 @@ private final class OverlayView: NSView {
             NSColor.black.withAlphaComponent(0.45).setStroke()
             path.lineWidth = 4
             path.stroke()
+            // Solid on the real screens, unlike the dotted lines in the workspace.
             guide.color.setStroke()
             path.lineWidth = 2
-            if !guide.isCustom { path.setLineDash([10, 6], count: 2, phase: 0) }
             path.stroke()
         }
     }

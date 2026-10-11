@@ -22,12 +22,19 @@ struct ImageFrame: Codable, Equatable {
     var width: Double
     /// Counterclockwise turn about the center, in degrees.
     var rotation: Double = 0
+    /// Height relative to the image's natural proportions: 1 keeps them, other values stretch.
+    var stretch: Double = 1
+    var flipHorizontal = false
+    var flipVertical = false
 
-    init(centerX: Double, centerY: Double, width: Double, rotation: Double = 0) {
+    init(centerX: Double, centerY: Double, width: Double, rotation: Double = 0, stretch: Double = 1, flipHorizontal: Bool = false, flipVertical: Bool = false) {
         self.centerX = centerX
         self.centerY = centerY
         self.width = width
         self.rotation = rotation
+        self.stretch = stretch
+        self.flipHorizontal = flipHorizontal
+        self.flipVertical = flipVertical
     }
 
     // Frames saved before rotation existed have no rotation key.
@@ -37,6 +44,9 @@ struct ImageFrame: Codable, Equatable {
         centerY = try values.decode(Double.self, forKey: .centerY)
         width = try values.decode(Double.self, forKey: .width)
         rotation = try values.decodeIfPresent(Double.self, forKey: .rotation) ?? 0
+        stretch = try values.decodeIfPresent(Double.self, forKey: .stretch) ?? 1
+        flipHorizontal = try values.decodeIfPresent(Bool.self, forKey: .flipHorizontal) ?? false
+        flipVertical = try values.decodeIfPresent(Bool.self, forKey: .flipVertical) ?? false
     }
 
     /// An angle brought into -180...180.

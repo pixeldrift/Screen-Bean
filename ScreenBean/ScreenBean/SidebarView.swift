@@ -14,6 +14,7 @@ final class SidebarView: NSView {
     let wallpaperPanel = ImageLayerPanel(title: "Spanned Wallpaper", showsTransform: true, showsClipToggle: true)
     let settingsPanel = SettingsPanel()
     let previewWallpaperButton = NSButton(title: "Preview Wallpaper", target: nil, action: nil)
+    let liveCheckbox = NSButton(checkboxWithTitle: "Live", target: nil, action: nil)
     let exportImagesButton = NSButton(title: "Export Slices", target: nil, action: nil)
     let applyWallpaperButton = NSButton(title: "Apply Wallpaper", target: nil, action: nil)
 
@@ -40,7 +41,11 @@ final class SidebarView: NSView {
         previewWallpaperButton.toolTip = "Show the wallpaper across all real screens. Ends on any click or key press."
         let exportRow = NSStackView(views: [exportImagesButton, applyWallpaperButton])
         exportRow.spacing = 8
-        let buttons = NSStackView(views: [previewWallpaperButton, exportRow])
+        liveCheckbox.toolTip = "Keep the preview up and update it as you edit, with this window on top. Switch the preview off to end it."
+        let previewRow = NSStackView(views: [previewWallpaperButton, liveCheckbox])
+        previewRow.spacing = 10
+        previewRow.alignment = .centerY
+        let buttons = NSStackView(views: [previewRow, exportRow])
         buttons.orientation = .vertical; buttons.alignment = .leading; buttons.spacing = 8
 
         let stack = NSStackView(views: [settingsPanel, topDivider, referenceImagePanel, divider, wallpaperPanel, buttons])

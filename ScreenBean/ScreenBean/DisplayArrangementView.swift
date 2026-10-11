@@ -388,7 +388,7 @@ class DisplayArrangementView: NSView {
     /// Where an image layer sits, in physical inches.
     private func physicalRect(of layer: ImageLayer) -> CGRect? {
         guard let image = layer.image, image.size.width > 0, image.size.height > 0, let frame = layer.frame else { return nil }
-        let height = CGFloat(frame.width) * image.size.height / image.size.width
+        let height = CGFloat(frame.width * frame.stretch) * image.size.height / image.size.width
         return CGRect(x: CGFloat(frame.centerX - frame.width / 2), y: CGFloat(frame.centerY) - height / 2, width: CGFloat(frame.width), height: height)
     }
 
@@ -415,12 +415,14 @@ class DisplayArrangementView: NSView {
         guard let image = current.image, let physical = physicalRect(of: current) else { return }
         let target = viewRect(forPhysical: physical)
         let turn = CGFloat(current.frame?.rotation ?? 0)
+        let flipX = current.frame?.flipHorizontal == true, flipY = current.frame?.flipVertical == true
         func drawImage(opacity: CGFloat) {
             NSGraphicsContext.saveGraphicsState()
-            if turn != 0, let context = NSGraphicsContext.current?.cgContext {
-                // Turn the image about its own center.
+            if turn != 0 || flipX || flipY, let context = NSGraphicsContext.current?.cgContext {
+                // Flip, then turn, the image about its own center.
                 context.translateBy(x: target.midX, y: target.midY)
                 context.rotate(by: turn * .pi / 180)
+                context.scaleBy(x: flipX ? -1 : 1, y: flipY ? -1 : 1)
                 context.translateBy(x: -target.midX, y: -target.midY)
             }
             image.draw(in: target, from: .zero, operation: .sourceOver, fraction: opacity, respectFlipped: true, hints: nil)
@@ -1188,13 +1190,15 @@ class DisplayArrangementView: NSView {
                 let x = CGFloat(guide.position) * pointsPerInch + viewOffset.x
                 path.move(to: CGPoint(x: x, y: 0)); path.line(to: CGPoint(x: x, y: bounds.maxY - rulerSize))
             }
-            // A dark line underneath keeps the guide visible over bright displays and images.
-            NSColor.black.withAlphaComponent(0.35).setStroke()
-            path.lineWidth = isActive ? 4 : 3
+            // Dotted in the workspace, so they read differently from the solid lines drawn on the real screens.
+            path.lineCapStyle = .round
+            path.setLineDash([0.1, 4.5], count: 2, phase: 0)
+            // A dark dot underneath keeps the guide visible over bright displays and images.
+            NSColor.black.withAlphaComponent(0.4).setStroke()
+            path.lineWidth = isActive ? 4.5 : 3.5
             path.stroke()
             guide.color.setStroke()
-            path.lineWidth = isActive ? 2.5 : 1.25
-            if !guide.isCustom { path.setLineDash([6, 4], count: 2, phase: 0) }
+            path.lineWidth = isActive ? 3 : 2
             path.stroke()
         }
     }
@@ -1800,9 +1804,39 @@ class DisplayArrangementView: NSView {
         needsDisplay = true
     }
 
+    // MARK: - Fit to Screens
+    /// Scales and centers an image to cover the selected displays, or all displays when none is selected.
+    /// Proportions are restored and the turn is cleared; flips are kept.
+    func fitImageToScreens(_ slot: ImageLayerSlot) {
+        guard let image = layer(slot).image, image.size.width > 0, image.size.height > 0 else { return }
+        let chosen = physicalLayout.displays.filter { selectedDisplayIDs.contains($0.id) }
+        let targets = chosen.isEmpty ? physicalLayout.displays : chosen
+        guard let first = targets.first else { return }
+        var area = panelRect(first)
+        for display in targets.dropFirst() { area = area.union(panelRect(display)) }
+        let aspect = image.size.height / image.size.width
+        let width = max(area.width, area.height / aspect)
+        UndoCenter.shared.perform("Fit to Screens") {
+            var frame = layer(slot).frame ?? ImageFrame(centerX: 0, centerY: 0, width: 1)
+            frame.centerX = Double(area.midX)
+            frame.centerY = Double(area.midY)
+            frame.width = Double(width)
+            frame.stretch = 1
+            frame.rotation = 0
+            setFrame(frame, for: slot)
+            onImageFrameChanged?(slot, frame)
+        }
+    }
+
     // MARK: - Wallpaper Export
+    /// How much to shrink a display's slice for a live preview, which doesn't need native resolution.
+    private func previewScale(_ pixelWidth: Int, _ maxPixelWidth: Int?) -> Double {
+        guard let maxPixelWidth, pixelWidth > maxPixelWidth else { return 1 }
+        return Double(maxPixelWidth) / Double(pixelWidth)
+    }
+
     /// Cuts the wallpaper into one native-resolution image per display, or nil if there is no wallpaper.
-    func wallpaperExport() -> WallpaperExport? {
+    func wallpaperExport(maxPixelWidth: Int? = nil) -> WallpaperExport? {
         guard let source = wallpaperLayer.image,
               let cgImage = source.cgImage(forProposedRect: nil, context: nil, hints: nil),
               let imageRect = physicalRect(of: wallpaperLayer),
@@ -1812,9 +1846,10 @@ class DisplayArrangementView: NSView {
         for info in displays {
             guard let placed = physicalLayout.displays.first(where: { $0.id == info.displayID }),
                   let rendered = WallpaperSlicer.render(
-                    image: cgImage, imageRect: imageRect, rotationDegrees: wallpaperLayer.frame?.rotation ?? 0,
+                    image: cgImage, imageRect: imageRect, rotationDegrees: wallpaperLayer.frame?.rotation ?? 0, flipHorizontal: wallpaperLayer.frame?.flipHorizontal == true, flipVertical: wallpaperLayer.frame?.flipVertical == true,
                     panelRect: CGRect(x: placed.x, y: placed.y, width: placed.width, height: placed.height),
-                    pixelWidth: info.pixelWidth, pixelHeight: info.pixelHeight
+                    pixelWidth: Int((Double(info.pixelWidth) * previewScale(info.pixelWidth, maxPixelWidth)).rounded()),
+                    pixelHeight: Int((Double(info.pixelHeight) * previewScale(info.pixelWidth, maxPixelWidth)).rounded())
                   ) else { continue }
             slices.append(WallpaperSlice(displayID: info.displayID, persistentID: info.persistentID, name: info.nickname, pixelWidth: info.pixelWidth, pixelHeight: info.pixelHeight, image: rendered))
             neededPPI = max(neededPPI, Double(info.pixelWidth) / max(Double(placed.width), 0.01))
@@ -2111,8 +2146,8 @@ class DisplayArrangementView: NSView {
                 } else if case .image = dragTarget {
                     isImage = true
                 }
-                // Proportional by default; Shift unlinks width and height (images keep their shape).
-                let keepAspect = isImage || !flags.contains(.shift)
+                // Proportional by default; Shift unlinks width and height.
+                let keepAspect = !flags.contains(.shift)
                 // Scaling is around the center by default; Option anchors the opposite corner or edge instead.
                 let fromCenter = !flags.contains(.option)
                 let turn = rotation(of: dragTarget)
@@ -2123,7 +2158,7 @@ class DisplayArrangementView: NSView {
                     // A turned image is resized in its own frame, then moved so a fixed corner stays where it was.
                     let start = CGPoint(x: dragStartRect.midX, y: dragStartRect.midY)
                     let local = rotatedPoint(viewToPhysical(currentPoint), about: start, degrees: -turn)
-                    var resized = resizedRect(dragStartRect, handle: handle, to: local, keepAspect: true, fromCenter: fromCenter, minSize: minSize)
+                    var resized = resizedRect(dragStartRect, handle: handle, to: local, keepAspect: keepAspect, fromCenter: fromCenter, minSize: minSize)
                     if !fromCenter {
                         let u = handle.unit
                         let anchor = CGPoint(x: dragStartRect.minX + (1 - u.x) * dragStartRect.width, y: dragStartRect.minY + (1 - u.y) * dragStartRect.height)
@@ -2181,7 +2216,14 @@ class DisplayArrangementView: NSView {
     private func apply(_ rect: CGRect, to target: EditTarget) {
         switch target {
         case .image(let slot):
-            let frame = ImageFrame(centerX: Double(rect.midX), centerY: Double(rect.midY), width: Double(rect.width), rotation: layer(slot).frame?.rotation ?? 0)
+            // Keep the turn and flips; the height says how far the image is stretched from its natural shape.
+            var frame = layer(slot).frame ?? ImageFrame(centerX: 0, centerY: 0, width: 1)
+            frame.centerX = Double(rect.midX)
+            frame.centerY = Double(rect.midY)
+            frame.width = Double(rect.width)
+            if let image = layer(slot).image, image.size.width > 0, rect.width > 0 {
+                frame.stretch = Double(rect.height / (rect.width * image.size.height / image.size.width))
+            }
             setFrame(frame, for: slot)
             onImageFrameChanged?(slot, frame)
         case .display(let id):

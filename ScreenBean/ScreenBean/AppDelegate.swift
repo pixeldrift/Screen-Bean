@@ -14,6 +14,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var sidebarView: SidebarView!
     private var identifyButton: NSButton { sidebarView.settingsPanel.identifyButton }
     private var previewButton: NSButton { sidebarView.previewWallpaperButton }
+    private var liveCheckbox: NSButton { sidebarView.liveCheckbox }
+    private var liveWork: DispatchWorkItem?
     private var excludePrimaryCheckbox: NSButton { sidebarView.settingsPanel.excludePrimaryCheckbox }
     private static let excludePrimaryKey = "ScreenBean.ExcludePrimaryFromIdentify"
 
@@ -86,6 +88,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         mainView.onImageFrameChanged = { [weak sidebar] slot, frame in
             store.saveFrame(frame, for: slot)
             (slot == .referenceImage ? sidebar?.referenceImagePanel : sidebar?.wallpaperPanel)?.showFrame(frame)
+            self.scheduleLivePreview()
         }
         mainView.onImageLockChanged = { [weak sidebar] slot, locked in
             store.saveLocked(locked, for: slot)
@@ -109,6 +112,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     setLayer(slot) { $0.isLocked = locked }
                 }
             }
+            panel.onFitRequested = { [weak mainView] in mainView?.fitImageToScreens(slot) }
             panel.onFrameChanged = { frame in
                 UndoCenter.shared.perform("Edit Image", coalesceKey: "image-\(slot.rawValue)") {
                     setLayer(slot) { $0.frame = frame }
@@ -118,6 +122,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             panel.onImageChanged = { image, data in
                 store.saveImageData(data, for: slot)
                 setLayer(slot) { $0.image = image }
+                self.scheduleLivePreview()
                 // A removed image shouldn't leave its lock behind for the next one.
                 if image == nil {
                     store.saveLocked(false, for: slot)
@@ -141,6 +146,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         mainView.onDisplayValuesChanged = { [weak inspector] display, x, y in
             inspector?.refresh(display, x: x, y: y)
             self.refreshOverlays()
+            self.scheduleLivePreview()
         }
 
         let centerButton = NSButton(title: "Center View", target: mainView, action: #selector(DisplayArrangementView.centerView))
@@ -165,10 +171,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         sidebarView = sidebar
         identifyButton.target = self; identifyButton.action = #selector(identifyToggled)
         previewButton.target = self; previewButton.action = #selector(previewToggled)
+        liveCheckbox.target = self; liveCheckbox.action = #selector(liveToggled)
         overlays.clickThroughViews = [identifyButton, previewButton]
         overlays.onModesStopped = { [weak self] in
             self?.identifyButton.state = .off
-            self?.previewButton.state = .off
+            // A live preview isn't ended by clicks, so only a static one resets here.
+            if self?.overlays.previewImages == nil { self?.previewButton.state = .off }
         }
         excludePrimaryCheckbox.target = self; excludePrimaryCheckbox.action = #selector(excludePrimaryToggled)
         let excluded = UserDefaults.standard.bool(forKey: Self.excludePrimaryKey)
@@ -238,17 +246,51 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     /// Shows each display's slice of the wallpaper full screen, spanning all displays.
+    /// Live keeps it up and updating, under this window; otherwise it covers everything until the next click or key press.
     @objc private func previewToggled() {
         guard previewButton.state == .on else {
-            overlays.hidePreview()
+            endPreview()
             return
         }
-        guard let export = wallpaperExportOrAlert() else {
-            previewButton.state = .off
-            return
-        }
+        guard startPreview() else { previewButton.state = .off; return }
+    }
+
+    @objc private func liveToggled() {
+        // Changing mode while a preview is up restarts it in the new mode.
+        guard previewButton.state == .on else { return }
+        if !startPreview() { previewButton.state = .off; endPreview() }
+    }
+
+    /// Returns false when there's no wallpaper to show.
+    private func startPreview() -> Bool {
+        let live = liveCheckbox.state == .on
+        guard let export = wallpaperExportOrAlert(maxPixelWidth: live ? 1600 : nil) else { return false }
         refreshOverlays()
-        overlays.showPreview(Dictionary(export.slices.map { ($0.displayID, $0.image) }, uniquingKeysWith: { first, _ in first }))
+        overlays.showPreview(previewImages(from: export), live: live)
+        // The window is raised above a live preview so the interface isn't covered.
+        window.level = live ? NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1) : .normal
+        return true
+    }
+
+    private func endPreview() {
+        overlays.hidePreview()
+        window.level = .normal
+    }
+
+    private func previewImages(from export: WallpaperExport) -> [CGDirectDisplayID: CGImage] {
+        Dictionary(export.slices.map { ($0.displayID, $0.image) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Refreshes a live preview shortly after edits stop arriving.
+    private func scheduleLivePreview() {
+        guard previewButton.state == .on, liveCheckbox.state == .on else { return }
+        liveWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let export = self.mainView?.wallpaperExport(maxPixelWidth: 1600), !export.slices.isEmpty else { return }
+            self.overlays.updatePreviewImages(self.previewImages(from: export))
+        }
+        liveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06, execute: work)
     }
 
     @objc private func excludePrimaryToggled() {
@@ -311,8 +353,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         alert.runModal()
     }
 
-    private func wallpaperExportOrAlert() -> WallpaperExport? {
-        guard let export = mainView?.wallpaperExport(), !export.slices.isEmpty else {
+    private func wallpaperExportOrAlert(maxPixelWidth: Int? = nil) -> WallpaperExport? {
+        guard let export = mainView?.wallpaperExport(maxPixelWidth: maxPixelWidth), !export.slices.isEmpty else {
             showAlert("No wallpaper", "Choose or drop a wallpaper image in the Spanned Wallpaper section first.")
             return nil
         }

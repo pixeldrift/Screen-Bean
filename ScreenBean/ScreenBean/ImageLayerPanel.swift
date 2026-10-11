@@ -17,6 +17,8 @@ final class ImageLayerPanel: NSView {
     var onBlendChanged: ((Double) -> Void)?
     /// Called when the lock button is clicked.
     var onLockChanged: ((Bool) -> Void)?
+    /// Called when the user asks to fit the image to the screens.
+    var onFitRequested: (() -> Void)?
     /// Called when the clip-to-displays checkbox changes (wallpaper only).
     var onClipChanged: ((Bool) -> Void)?
     /// Called when the user edits the position or scale fields.
@@ -83,7 +85,7 @@ final class ImageLayerPanel: NSView {
         frameValue = frame
         guard let frame else { return }
         x.value = frame.centerX; y.value = frame.centerY
-        width.value = frame.width; height.value = frame.width * aspect
+        width.value = frame.width; height.value = frame.width * aspect * frame.stretch
         rotation.value = frame.rotation
     }
 
@@ -187,18 +189,38 @@ final class ImageLayerPanel: NSView {
         x.onChange = { [weak self] v in self?.edit { $0.centerX = v } }
         y.onChange = { [weak self] v in self?.edit { $0.centerY = v } }
         width.onChange = { [weak self] v in self?.edit { $0.width = v } }
+        // Height stretches the image on its own; the width keeps its place.
         height.onChange = { [weak self] v in
             guard let self else { return }
             let aspect = self.aspect
-            self.edit { $0.width = v / aspect }
+            self.edit { $0.stretch = v / max($0.width * aspect, 0.0001) }
         }
         let section = NSStackView(views: [
             twoColumnGrid(x.labeled("X-Pos", unit: "inches"), y.labeled("Y-Pos", unit: "inches")),
             twoColumnGrid(width.labeled("Width", unit: "inches"), height.labeled("Height", unit: "inches")),
-            twoColumnGrid(rotation.labeled("Rotation", unit: "degrees"), NSView())
+            twoColumnGrid(rotation.labeled("Rotation", unit: "degrees"), NSView()),
+            buttonRow([("Flip Horizontal", { [weak self] in self?.edit { $0.flipHorizontal.toggle() } }),
+                       ("Flip Vertical", { [weak self] in self?.edit { $0.flipVertical.toggle() } })]),
+            buttonRow([("Fit to Screens", { [weak self] in self?.onFitRequested?() }),
+                       ("Reset Proportions", { [weak self] in self?.edit { $0.stretch = 1 } })])
         ])
         section.orientation = .vertical; section.alignment = .width; section.spacing = 8
         return section
+    }
+
+    /// Small buttons that run closures, side by side.
+    private func buttonRow(_ items: [(String, () -> Void)]) -> NSView {
+        let buttons = items.map { title, action -> NSButton in
+            let button = ClosureButton(title: title, action: action)
+            button.bezelStyle = .rounded
+            button.controlSize = .small
+            button.font = .systemFont(ofSize: 11)
+            return button
+        }
+        let row = NSStackView(views: buttons)
+        row.spacing = 6
+        row.distribution = .fillEqually
+        return row
     }
 
     private func edit(_ change: (inout ImageFrame) -> Void) {
@@ -279,4 +301,21 @@ struct ImageLayerBlend {
         opacity = abs(v)
         aboveDisplays = v > 0
     }
+}
+
+/// A button that runs a closure when clicked.
+final class ClosureButton: NSButton {
+    private let handler: () -> Void
+
+    init(title: String, action: @escaping () -> Void) {
+        handler = action
+        super.init(frame: .zero)
+        self.title = title
+        target = self
+        self.action = #selector(run)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    @objc private func run() { handler() }
 }

@@ -494,6 +494,11 @@ The sidebar for editing the selected display: nickname, physical size, position,
 * [x]	Bezel visibility
 * [x]	Detect each display's rotation and mirroring from macOS
 * [x]	Refresh displays and open System Settings
+* [x]	Undo and redo for layout edits (Edit menu, Command-Z and Shift-Command-Z)
+* [ ]	Add Virtual Display: create displays that aren't connected, from a known size and place, so layouts can be planned before hardware is set up (projectors, for example)
+* [ ]	Virtual displays stay in the layout while disconnected, with a corner icon showing whether each is connected or virtual
+* [ ]	Assign a virtual display to a physical display later
+* [ ]	Displays sidebar panel listing every display: collapsed by default with an icon to toggle it, List and Thumbnail views, minimal details for each
 * [x]	Colored border on the real display when its virtual display is selected
 * [x]	Identify displays on the real screens (stays on; optionally excluding the primary)
 * [ ]	Display calibration UI
@@ -512,6 +517,10 @@ macOS has no public API for changing a display's rotation, so these edit Screen 
 * [x]	Preview wallpaper across displays
 * [x]	Toggle preview clipped to the displays
 * [x]	Preview the wallpaper full screen across all real displays
+* [x]	Live preview: wallpaper across the real screens that updates as you edit, with this window on top
+* [x]	Stretch images without keeping proportions (Shift while scaling, or the Height field)
+* [x]	Flip images horizontally and vertically
+* [x]	Fit an image to the selected displays, or to all displays
 * [x]	Lock wallpaper
 * [x]	Account for display rotation
 * [x]	Calculate output resolution
@@ -578,6 +587,7 @@ macOS has no public API for changing a display's rotation, so these edit Screen 
 Rarely needed, so these wait until the main phases are working.
 
 * [ ]	Rotate displays to arbitrary angles (angled installations)
+* [ ]	Media Composer: more than a single reference image or wallpaper, with several items arranged together (photo collages, for example) and other media types, such as video spanned across all screens
 
 ---
 
