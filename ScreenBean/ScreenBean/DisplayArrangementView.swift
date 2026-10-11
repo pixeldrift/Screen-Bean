@@ -23,10 +23,18 @@ class DisplayArrangementView: NSView {
 
     private var physicalLayout = PhysicalLayout()
 
-    /// Photo or plan drawn as a layout reference, sized to the width of the arrangement.
-    var referenceImage: NSImage? { didSet { needsDisplay = true } }
-    /// Controls the reference image's opacity and whether it draws over the displays.
-    var referenceBlend = ReferenceImageBlend(value: 0) { didSet { needsDisplay = true } }
+    /// An image drawn in the workspace, sized to the width of the arrangement.
+    /// Its blend sets the opacity and whether it draws below or above the displays.
+    struct ImageLayer {
+        var image: NSImage?
+        var blend = ImageLayerBlend(value: 0)
+    }
+
+    /// Photo or plan drawn as a layout reference.
+    var referenceLayer = ImageLayer() { didSet { needsDisplay = true } }
+    /// One image spanned across the whole arrangement.
+    var wallpaperLayer = ImageLayer() { didSet { needsDisplay = true } }
+    private var imageLayers: [ImageLayer] { [referenceLayer, wallpaperLayer] }
     // MARK: - Workspace Camera
     /// Number of view points used to represent one physical inch
     /// at the default zoom level.
@@ -191,7 +199,7 @@ class DisplayArrangementView: NSView {
         guard !physicalLayout.displays.isEmpty else {
             return
         }
-        if !referenceBlend.aboveDisplays { drawReferenceImage() }
+        for layer in imageLayers where !layer.blend.aboveDisplays { drawImageLayer(layer) }
         for display in physicalLayout.displays {
             let rect =
                 physicalRectToView(
@@ -204,15 +212,15 @@ class DisplayArrangementView: NSView {
                 isSelected: display.id == selectedDisplayID
             )
         }
-        if referenceBlend.aboveDisplays { drawReferenceImage() }
+        for layer in imageLayers where layer.blend.aboveDisplays { drawImageLayer(layer) }
     }
 
-    // MARK: - Reference Image
-    /// Draws the reference image, anchored to the arrangement's top-left corner
+    // MARK: - Image Layers
+    /// Draws an image layer, anchored to the arrangement's top-left corner
     /// and scaled to the arrangement's width.
-    private func drawReferenceImage() {
-        guard let image = referenceImage,
-              referenceBlend.opacity > 0,
+    private func drawImageLayer(_ layer: ImageLayer) {
+        guard let image = layer.image,
+              layer.blend.opacity > 0,
               image.size.width > 0, image.size.height > 0,
               physicalLayout.width > 0 else { return }
         let width = physicalLayout.width
@@ -223,7 +231,7 @@ class DisplayArrangementView: NSView {
             width: width * pointsPerInch,
             height: height * pointsPerInch
         )
-        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: CGFloat(referenceBlend.opacity), respectFlipped: true, hints: nil)
+        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: CGFloat(layer.blend.opacity), respectFlipped: true, hints: nil)
     }
 
     // MARK: - Grid

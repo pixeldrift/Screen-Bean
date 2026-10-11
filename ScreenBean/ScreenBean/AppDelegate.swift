@@ -26,8 +26,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         let sidebar = SidebarView()
         let inspector = sidebar.inspector
-        sidebar.referenceImagePanel.onImageChanged = { [weak mainView] in mainView?.referenceImage = $0 }
-        sidebar.referenceImagePanel.onBlendChanged = { [weak mainView] in mainView?.referenceBlend = ReferenceImageBlend(value: $0) }
+        let store = ImageLayerStore.shared
+        let layerPanels: [(slot: ImageLayerSlot, panel: ImageLayerPanel)] = [
+            (.referenceImage, sidebar.referenceImagePanel), (.wallpaper, sidebar.wallpaperPanel)
+        ]
+        func setLayer(_ slot: ImageLayerSlot, _ change: (inout DisplayArrangementView.ImageLayer) -> Void) {
+            switch slot {
+            case .referenceImage: change(&mainView.referenceLayer)
+            case .wallpaper: change(&mainView.wallpaperLayer)
+            }
+        }
+        for (slot, panel) in layerPanels {
+            let image = store.loadImage(slot), blend = store.loadBlend(slot)
+            panel.restore(image: image, blend: blend)
+            setLayer(slot) { $0.image = image; $0.blend = ImageLayerBlend(value: blend) }
+            panel.onImageChanged = { image, data in
+                store.saveImageData(data, for: slot)
+                setLayer(slot) { $0.image = image }
+            }
+            panel.onBlendChanged = { value in
+                store.saveBlend(value, for: slot)
+                setLayer(slot) { $0.blend = ImageLayerBlend(value: value) }
+            }
+        }
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         inspector.onChange = { nickname, width, height, x, y, color, uniform, top, bottom, left, right in
             mainView.updateSelectedDisplay(

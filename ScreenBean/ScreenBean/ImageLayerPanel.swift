@@ -1,18 +1,18 @@
 //
-//  ReferenceImagePanel.swift
+//  ImageLayerPanel.swift
 //  ScreenBean
 //
-//  Sidebar options for the layout reference image: choose a file, preview it,
-//  and set how it blends with the displays.
+//  Sidebar options for one workspace image layer (reference image or spanned
+//  wallpaper): choose a file, preview it, and set how it blends with the displays.
 //
 
 import Cocoa
 import UniformTypeIdentifiers
 
-final class ReferenceImagePanel: NSView {
-    /// Called with the chosen image (nil when cleared).
-    var onImageChanged: ((NSImage?) -> Void)?
-    /// Called with a blend value from -1 to 1. See `ReferenceImageBlend`.
+final class ImageLayerPanel: NSView {
+    /// Called with the chosen image and its original file bytes (both nil when cleared).
+    var onImageChanged: ((NSImage?, Data?) -> Void)?
+    /// Called with a blend value from -1 to 1. See `ImageLayerBlend`.
     var onBlendChanged: ((Double) -> Void)?
 
     private let thumbnail = NSImageView()
@@ -21,12 +21,27 @@ final class ReferenceImagePanel: NSView {
     private let slider = NSSlider(value: 0, minValue: -1, maxValue: 1, target: nil, action: nil)
     private let readout = NSTextField(labelWithString: "")
 
-    override init(frame: NSRect) { super.init(frame: frame); build() }
-    required init?(coder: NSCoder) { super.init(coder: coder); build() }
+    private let titleText: String
+
+    init(title: String) {
+        titleText = title
+        super.init(frame: .zero)
+        build()
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// Shows saved state without notifying `onImageChanged` / `onBlendChanged`.
+    func restore(image: NSImage?, blend: Double) {
+        thumbnail.image = image
+        clearButton.isEnabled = image != nil
+        slider.isEnabled = image != nil
+        slider.doubleValue = blend
+        updateReadout()
+    }
 
     private func build() {
-        let title = NSTextField(labelWithString: "Reference Image")
-        title.font = .boldSystemFont(ofSize: 16)
+        let title = NSTextField(labelWithString: titleText)
+        title.font = .boldSystemFont(ofSize: 14)
 
         thumbnail.imageScaling = .scaleProportionallyUpOrDown
         thumbnail.imageFrameStyle = .grayBezel
@@ -79,7 +94,8 @@ final class ReferenceImagePanel: NSView {
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 8)
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 0),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
         updateReadout()
     }
@@ -89,14 +105,15 @@ final class ReferenceImagePanel: NSView {
         open.allowedContentTypes = [.image]
         open.allowsMultipleSelection = false
         open.canChooseDirectories = false
-        guard open.runModal() == .OK, let url = open.url, let image = NSImage(contentsOf: url) else { return }
+        guard open.runModal() == .OK, let url = open.url,
+              let data = try? Data(contentsOf: url), let image = NSImage(data: data) else { return }
         setImage(image)
-        onImageChanged?(image)
+        onImageChanged?(image, data)
     }
 
     @objc private func clearImage() {
         setImage(nil)
-        onImageChanged?(nil)
+        onImageChanged?(nil, nil)
     }
 
     private func setImage(_ image: NSImage?) {
@@ -114,7 +131,7 @@ final class ReferenceImagePanel: NSView {
     }
 
     private func updateReadout() {
-        let blend = ReferenceImageBlend(value: slider.doubleValue)
+        let blend = ImageLayerBlend(value: slider.doubleValue)
         if thumbnail.image == nil { readout.stringValue = "No image chosen" }
         else if blend.opacity == 0 { readout.stringValue = "Hidden" }
         else { readout.stringValue = "\(Int((blend.opacity * 100).rounded()))% opacity, \(blend.aboveDisplays ? "above" : "below") displays" }
@@ -123,7 +140,7 @@ final class ReferenceImagePanel: NSView {
 
 /// Interprets the reference image slider: -1 is the image below the displays at
 /// full opacity, 0 is invisible, and +1 is the image above the displays at full opacity.
-struct ReferenceImageBlend {
+struct ImageLayerBlend {
     var opacity: Double
     var aboveDisplays: Bool
 
