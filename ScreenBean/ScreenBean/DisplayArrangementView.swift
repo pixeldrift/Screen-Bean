@@ -312,7 +312,7 @@ class DisplayArrangementView: NSView {
                 in: context,
                 rect: rect,
                 isSelected: display.id == selectedDisplayID,
-                label: Self.displayLabel(index)
+                label: DisplayIdentity.label(forIndex: index)
             )
         }
         for slot in imageSlots where layer(slot).blend.aboveDisplays { drawImageLayer(slot) }
@@ -560,12 +560,6 @@ class DisplayArrangementView: NSView {
         drawLockIcon(for: display, in: rect, isSelected: isSelected)
 
         drawIdentity(of: display, label: label, in: rect)
-    }
-
-    /// A, B, C ... then A1, B1 ... for a display's position in the list.
-    private static func displayLabel(_ index: Int) -> String {
-        let letter = String(UnicodeScalar(UInt8(65 + index % 26)))
-        return index < 26 ? letter : "\(letter)\(index / 26)"
     }
 
     /// A faint circle with the display's letter in the middle, and its name,

@@ -10,6 +10,10 @@ import CoreGraphics
 class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
     private var mainView: DisplayArrangementView?
+    private let overlays = DisplayOverlayManager()
+    private let identifyButton = NSButton(title: "Identify Displays", target: nil, action: nil)
+    private let excludePrimaryCheckbox = NSButton(checkboxWithTitle: "Exclude primary", target: nil, action: nil)
+    private static let excludePrimaryKey = "ScreenBean.ExcludePrimaryFromIdentify"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let mainMenu = NSMenu()
@@ -95,9 +99,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             sidebar?.setDisplaySelected(display != nil)
             let position = mainView?.selectedPosition()
             sidebar?.inspector.refresh(display, x: position?.x ?? 0, y: position?.y ?? 0)
+            self.refreshOverlays()
         }
         mainView.onDisplayValuesChanged = { [weak inspector] display, x, y in
             inspector?.refresh(display, x: x, y: y)
+            self.refreshOverlays()
         }
 
         let centerButton = NSButton(title: "Center View", target: mainView, action: #selector(DisplayArrangementView.centerView))
@@ -113,8 +119,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsButton = NSButton(title: "Display Settings…", target: self, action: #selector(openDisplaySettings))
         refreshButton.bezelStyle = .rounded
         settingsButton.bezelStyle = .rounded
-        let systemButtonStack = NSStackView(views: [refreshButton, settingsButton])
-        systemButtonStack.orientation = .horizontal
+        // Identify mode stays on, even while you click around, until the button is switched off.
+        identifyButton.setButtonType(.pushOnPushOff)
+        identifyButton.bezelStyle = .rounded
+        identifyButton.target = self; identifyButton.action = #selector(identifyToggled)
+        identifyButton.toolTip = "Show each display's letter, name and size on the real screens. Stays on until clicked again."
+        excludePrimaryCheckbox.target = self; excludePrimaryCheckbox.action = #selector(excludePrimaryToggled)
+        excludePrimaryCheckbox.toolTip = "Leave the primary display clear while identifying."
+        let excluded = UserDefaults.standard.bool(forKey: Self.excludePrimaryKey)
+        excludePrimaryCheckbox.state = excluded ? .on : .off
+        overlays.excludePrimary = excluded
+        let identifyRow = NSStackView(views: [excludePrimaryCheckbox, identifyButton])
+        identifyRow.orientation = .horizontal
+        identifyRow.spacing = 12
+        let systemRow = NSStackView(views: [refreshButton, settingsButton])
+        systemRow.orientation = .horizontal
+        systemRow.spacing = 8
+        let systemButtonStack = NSStackView(views: [identifyRow, systemRow])
+        systemButtonStack.orientation = .vertical
+        systemButtonStack.alignment = .trailing
         systemButtonStack.spacing = 8
         systemButtonStack.translatesAutoresizingMaskIntoConstraints = false
         self.mainView = mainView
@@ -158,6 +181,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Re-reads the displays from macOS, e.g. after changing orientation in System Settings.
     @objc private func refreshDisplays() {
         mainView?.reloadDisplays()
+        refreshOverlays()
+    }
+
+    // MARK: - Identify
+
+    /// Pushes the current displays and selection to the overlays on the real screens.
+    private func refreshOverlays() {
+        guard let mainView else { return }
+        overlays.update(displays: mainView.displays, selectedID: mainView.selectedDisplayID)
+    }
+
+    @objc private func identifyToggled() {
+        overlays.identifyEnabled = identifyButton.state == .on
+        refreshOverlays()
+    }
+
+    @objc private func excludePrimaryToggled() {
+        let excluded = excludePrimaryCheckbox.state == .on
+        UserDefaults.standard.set(excluded, forKey: Self.excludePrimaryKey)
+        overlays.excludePrimary = excluded
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        overlays.hideAll()
     }
 
     // MARK: - Measurements

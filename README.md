@@ -494,6 +494,8 @@ The sidebar for editing the selected display: nickname, physical size, position,
 * [x]	Bezel visibility
 * [x]	Detect each display's rotation and mirroring from macOS
 * [x]	Refresh displays and open System Settings
+* [x]	Colored border on the real display when its virtual display is selected
+* [x]	Identify displays on the real screens (stays on; optionally excluding the primary)
 * [ ]	Display calibration UI
 * [ ]	Rotate display clockwise (90°) in Screen Bean's layout
 * [ ]	Rotate display counterclockwise (90°) in Screen Bean's layout
@@ -525,7 +527,7 @@ macOS has no public API for changing a display's rotation, so these edit Screen 
 * [ ]	Rotate reference image
 * [x]	Lock reference image
 * [ ]	Four-corner perspective correction
-* [ ]	Overlay windows on every display, so tools can draw outside the app window
+* [x]	Overlay windows on every display, so tools can draw outside the app window
 * [ ]	Rulers and alignment guides (one tool, drawn across all displays)
 * [ ]	Measurement guides
 * [ ]	Custom guides
