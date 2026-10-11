@@ -529,9 +529,9 @@ macOS has no public API for changing a display's rotation, so these edit Screen 
 * [x]	Lock reference image
 * [ ]	Four-corner perspective correction
 * [x]	Overlay windows on every display, so tools can draw outside the app window
-* [ ]	Rulers and alignment guides (one tool, drawn across all displays)
+* [x]	Rulers and alignment guides (one tool, drawn across all displays)
 * [ ]	Measurement guides
-* [ ]	Custom guides
+* [x]	Custom guides
 * [x]	Type fractional measurements (for example "23 1/8") in number inputs
 * [x]	Toggle number inputs between decimal and fractions (nearest 16th)
 * [ ]	Unit options (inches, centimeters, and others)

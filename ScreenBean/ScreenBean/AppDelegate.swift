@@ -24,12 +24,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenu = NSMenu()
         appMenu.addItem(NSMenuItem(title: "Quit ScreenBean", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         appMenuItem.submenu = appMenu
+        for name in [GuideSettings.didChange, GuideStore.didChange] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in self?.refreshOverlays() }
+        }
         let viewMenuItem = NSMenuItem()
         mainMenu.addItem(viewMenuItem)
         let viewMenu = NSMenu(title: "View")
         let fractionsItem = NSMenuItem(title: "Show Measurements as Fractions", action: #selector(toggleFractions), keyEquivalent: "")
         fractionsItem.target = self
         viewMenu.addItem(fractionsItem)
+        let guidesItem = NSMenuItem(title: "Show Guides", action: #selector(toggleGuides), keyEquivalent: ";")
+        guidesItem.target = self
+        viewMenu.addItem(guidesItem)
+        let clearGuidesItem = NSMenuItem(title: "Clear Custom Guides", action: #selector(clearGuides), keyEquivalent: "")
+        clearGuidesItem.target = self
+        viewMenu.addItem(clearGuidesItem)
         viewMenuItem.submenu = viewMenu
         NSApp.mainMenu = mainMenu
         NSApp.setActivationPolicy(.regular)
@@ -188,7 +197,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Pushes the current displays and selection to the overlays on the real screens.
     private func refreshOverlays() {
         guard let mainView else { return }
-        overlays.update(displays: mainView.displays, selectedID: mainView.selectedDisplayID)
+        overlays.update(
+            displays: mainView.displays,
+            selectedID: mainView.selectedDisplayID,
+            guides: mainView.resolvedGuides(),
+            panels: mainView.displayPanelRects()
+        )
     }
 
     @objc private func identifyToggled() {
@@ -226,7 +240,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         MeasurementFormat.useFractions.toggle()
     }
 
+    @objc private func toggleGuides() { GuideSettings.showGuides.toggle() }
+    @objc private func clearGuides() { GuideStore.shared.removeAll() }
+
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(toggleGuides) { item.state = GuideSettings.showGuides ? .on : .off }
+        if item.action == #selector(clearGuides) { return !GuideStore.shared.guides.isEmpty }
         if item.action == #selector(toggleFractions) {
             item.state = MeasurementFormat.useFractions ? .on : .off
         }

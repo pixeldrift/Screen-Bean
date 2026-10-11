@@ -91,6 +91,10 @@ class DisplayArrangementView: NSView {
     private var panStartPoint = CGPoint.zero
     private var panStartOffset = CGPoint.zero
     private var isPanning = false
+    /// A custom guide being dragged out of a ruler, or moved.
+    private var guideDrag: UUID?
+    private var hoverGuideID: UUID?
+    private var guideDragPoint = CGPoint.zero
     /// Shift-dragging the background zooms around the point where the drag began.
     private var isZoomDragging = false
     private var zoomDragStart = CGPoint.zero
@@ -158,7 +162,7 @@ class DisplayArrangementView: NSView {
         super.viewDidMoveToWindow()
         // Redraw when settings that change how displays look are switched.
         guard settingsObservers.isEmpty else { return }
-        for name in [BezelVisibility.didChange, MeasurementFormat.didChange] {
+        for name in [BezelVisibility.didChange, MeasurementFormat.didChange, GuideSettings.didChange, GuideStore.didChange] {
             settingsObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 self?.needsDisplay = true
             })
@@ -336,11 +340,14 @@ class DisplayArrangementView: NSView {
         }
         for slot in imageSlots where drawsAboveDisplays(slot) { drawImageLayer(slot) }
         drawImageLockIcons(in: context)
+        drawGuides()
         var withHandles: [EditTarget] = []
         for target in [currentSelection, hoverTarget].compactMap({ $0 }) where !withHandles.contains(target) {
             withHandles.append(target)
             drawHandles(for: target, in: context)
         }
+        drawRulers()
+        drawGuideDragLabel()
     }
 
     // MARK: - Image Layers
@@ -852,12 +859,268 @@ class DisplayArrangementView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        let target = hoverTest(convert(event.locationInWindow, from: nil))
+        let point = convert(event.locationInWindow, from: nil)
+        let target = hoverTest(point)
         if target != hoverTarget { hoverTarget = target; needsDisplay = true }
+
+        // Custom guides highlight and show a resize cursor under the mouse.
+        let guide = rulerAxis(at: point) == nil ? customGuide(at: point) : nil
+        if guide?.id != hoverGuideID {
+            hoverGuideID = guide?.id
+            needsDisplay = true
+        }
+        if let guide {
+            (guide.axis == .horizontal ? NSCursor.resizeUpDown : NSCursor.resizeLeftRight).set()
+        } else if let axis = rulerAxis(at: point) {
+            (axis == .horizontal ? NSCursor.resizeUpDown : NSCursor.resizeLeftRight).set()
+        } else {
+            NSCursor.arrow.set()
+        }
     }
 
     override func mouseExited(with event: NSEvent) {
         if hoverTarget != nil { hoverTarget = nil; needsDisplay = true }
+        if hoverGuideID != nil { hoverGuideID = nil; needsDisplay = true }
+        NSCursor.arrow.set()
+    }
+
+    // MARK: - Guide Editing
+    override var acceptsFirstResponder: Bool { true }
+
+    /// Delete or Backspace removes the custom guide under the mouse.
+    override func keyDown(with event: NSEvent) {
+        if (event.keyCode == 51 || event.keyCode == 117), let hoverGuideID {
+            GuideStore.shared.remove(hoverGuideID)
+            self.hoverGuideID = nil
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+
+    private final class GuideMenuPayload: NSObject {
+        let axis: GuideAxis?
+        let position: Double
+        let id: UUID?
+        init(axis: GuideAxis? = nil, position: Double = 0, id: UUID? = nil) { self.axis = axis; self.position = position; self.id = id }
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let point = convert(event.locationInWindow, from: nil)
+        let menu = NSMenu()
+        if let guide = customGuide(at: point) {
+            let item = NSMenuItem(title: "Delete Guide", action: #selector(deleteGuideFromMenu(_:)), keyEquivalent: "")
+            item.representedObject = GuideMenuPayload(id: guide.id)
+            item.target = self
+            menu.addItem(item)
+            menu.addItem(.separator())
+        }
+        let location = viewToPhysical(point)
+        let horizontal = NSMenuItem(title: "Add Horizontal Guide Here", action: #selector(addGuideFromMenu(_:)), keyEquivalent: "")
+        horizontal.representedObject = GuideMenuPayload(axis: .horizontal, position: Double(location.y))
+        let vertical = NSMenuItem(title: "Add Vertical Guide Here", action: #selector(addGuideFromMenu(_:)), keyEquivalent: "")
+        vertical.representedObject = GuideMenuPayload(axis: .vertical, position: Double(location.x))
+        let clear = NSMenuItem(title: "Clear Custom Guides", action: #selector(clearGuidesFromMenu), keyEquivalent: "")
+        clear.isEnabled = !GuideStore.shared.guides.isEmpty
+        for item in [horizontal, vertical, clear] { item.target = self; menu.addItem(item) }
+        return menu
+    }
+
+    @objc private func deleteGuideFromMenu(_ sender: NSMenuItem) {
+        if let id = (sender.representedObject as? GuideMenuPayload)?.id { GuideStore.shared.remove(id) }
+    }
+
+    @objc private func addGuideFromMenu(_ sender: NSMenuItem) {
+        guard let payload = sender.representedObject as? GuideMenuPayload, let axis = payload.axis else { return }
+        GuideSettings.showGuides = true
+        GuideStore.shared.add(Guide(axis: axis, position: payload.position))
+        GuideStore.shared.save()
+    }
+
+    @objc private func clearGuidesFromMenu() { GuideStore.shared.removeAll() }
+
+    // MARK: - Guides
+    /// Every guide to draw: edge guides from the displays, then custom ones.
+    func resolvedGuides() -> [ResolvedGuide] {
+        guard GuideSettings.showGuides else { return [] }
+        var result: [ResolvedGuide] = []
+        if GuideSettings.showEdgeGuides {
+            let sources = GuideSettings.edgeScope == .selectedDisplay
+                ? physicalLayout.displays.filter { $0.id == selectedDisplayID }
+                : physicalLayout.displays
+            var seen = Set<String>()
+            for display in sources {
+                let base = NSColor(displayHex: display.colorHex)
+                let color = base.blended(withFraction: 0.4, of: .black) ?? base
+                let edges: [(GuideAxis, CGFloat)] = [
+                    (.vertical, display.x), (.vertical, display.right),
+                    (.horizontal, display.y), (.horizontal, display.bottom)
+                ]
+                for (axis, position) in edges {
+                    // Displays that share an edge share one guide.
+                    guard seen.insert("\(axis.rawValue)\(Int((position * 1000).rounded()))").inserted else { continue }
+                    result.append(ResolvedGuide(axis: axis, position: Double(position), color: color, customID: nil))
+                }
+            }
+        }
+        for guide in GuideStore.shared.guides {
+            result.append(ResolvedGuide(axis: guide.axis, position: guide.position, color: .systemPink, customID: guide.id))
+        }
+        return result
+    }
+
+    /// Each display's panel in physical inches, for drawing guides on the real screens.
+    func displayPanelRects() -> [CGDirectDisplayID: CGRect] {
+        Dictionary(uniqueKeysWithValues: physicalLayout.displays.map { ($0.id, CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height)) })
+    }
+
+    /// The physical position a guide of `axis` takes when dragged to `point`.
+    private func guidePosition(for point: CGPoint, axis: GuideAxis) -> Double {
+        let physical = viewToPhysical(point)
+        return Double(axis == .horizontal ? physical.y : physical.x)
+    }
+
+    private func isOverRuler(_ point: CGPoint) -> Bool {
+        point.x <= rulerSize || point.y >= bounds.maxY - rulerSize
+    }
+
+    /// Which kind of guide a mouse-down at `point` would pull out of a ruler.
+    private func rulerAxis(at point: CGPoint) -> GuideAxis? {
+        if point.y >= bounds.maxY - rulerSize && point.x > rulerSize { return .horizontal }
+        if point.x <= rulerSize && point.y < bounds.maxY - rulerSize { return .vertical }
+        return nil
+    }
+
+    /// The custom guide within a few points of `point`.
+    private func customGuide(at point: CGPoint) -> Guide? {
+        guard GuideSettings.showGuides, !isOverRuler(point) else { return nil }
+        return GuideStore.shared.guides.reversed().first { guide in
+            switch guide.axis {
+            case .horizontal: return abs(point.y - (CGFloat(guide.position) * pointsPerInch + viewOffset.y)) <= 4
+            case .vertical: return abs(point.x - (CGFloat(guide.position) * pointsPerInch + viewOffset.x)) <= 4
+            }
+        }
+    }
+
+    private func drawGuides() {
+        let guides = resolvedGuides()
+        guard !guides.isEmpty else { return }
+        for guide in guides {
+            let isActive = guide.customID != nil && (guide.customID == hoverGuideID || guide.customID == guideDrag)
+            let path = NSBezierPath()
+            switch guide.axis {
+            case .horizontal:
+                let y = CGFloat(guide.position) * pointsPerInch + viewOffset.y
+                path.move(to: CGPoint(x: rulerSize, y: y)); path.line(to: CGPoint(x: bounds.maxX, y: y))
+            case .vertical:
+                let x = CGFloat(guide.position) * pointsPerInch + viewOffset.x
+                path.move(to: CGPoint(x: x, y: 0)); path.line(to: CGPoint(x: x, y: bounds.maxY - rulerSize))
+            }
+            // A dark line underneath keeps the guide visible over bright displays and images.
+            NSColor.black.withAlphaComponent(0.35).setStroke()
+            path.lineWidth = isActive ? 4 : 3
+            path.stroke()
+            guide.color.setStroke()
+            path.lineWidth = isActive ? 2.5 : 1.25
+            if !guide.isCustom { path.setLineDash([6, 4], count: 2, phase: 0) }
+            path.stroke()
+        }
+    }
+
+    /// While a guide is dragged, its position is shown next to the cursor.
+    private func drawGuideDragLabel() {
+        guard let guideDrag, let guide = GuideStore.shared.guide(withID: guideDrag) else { return }
+        let text = "\(MeasurementFormat.string(guide.position)) in" as NSString
+        let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor.white]
+        let size = text.size(withAttributes: attributes)
+        let origin = CGPoint(x: min(guideDragPoint.x + 14, bounds.maxX - size.width - 14), y: min(max(guideDragPoint.y - size.height - 10, 4), bounds.maxY - size.height - 4))
+        let pill = CGRect(x: origin.x - 6, y: origin.y - 2, width: size.width + 12, height: size.height + 4)
+        NSColor.black.withAlphaComponent(0.7).setFill()
+        NSBezierPath(roundedRect: pill, xRadius: 5, yRadius: 5).fill()
+        text.draw(at: origin, withAttributes: attributes)
+    }
+
+    // MARK: - Rulers
+    private let rulerSize: CGFloat = 20
+
+    /// Spacing between labeled ruler ticks, in inches, chosen for the current zoom.
+    private func rulerMajorSpacing() -> Double {
+        let candidates: [Double] = [0.0625, 0.125, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]
+        return candidates.first { $0 * Double(pointsPerInch) >= 70 } ?? 1000
+    }
+
+    private func rulerLabel(_ value: Double) -> String {
+        MeasurementFormat.useFractions ? MeasurementFormat.fractionString(value) : String(format: "%g", (value * 10000).rounded() / 10000)
+    }
+
+    private func drawRulers() {
+        let topStrip = CGRect(x: 0, y: bounds.maxY - rulerSize, width: bounds.width, height: rulerSize)
+        let leftStrip = CGRect(x: 0, y: 0, width: rulerSize, height: bounds.height - rulerSize)
+        NSColor.windowBackgroundColor.withAlphaComponent(0.94).setFill()
+        topStrip.fill()
+        leftStrip.fill()
+        NSColor.separatorColor.setStroke()
+        let edges = NSBezierPath()
+        edges.move(to: CGPoint(x: 0, y: topStrip.minY)); edges.line(to: CGPoint(x: bounds.maxX, y: topStrip.minY))
+        edges.move(to: CGPoint(x: leftStrip.maxX, y: 0)); edges.line(to: CGPoint(x: leftStrip.maxX, y: topStrip.minY))
+        edges.lineWidth = 1
+        edges.stroke()
+
+        let major = rulerMajorSpacing()
+        let divisions: Double = major < 1 ? 4 : 5
+        let minor = major / divisions
+        let scale = Double(pointsPerInch)
+        let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 8), .foregroundColor: NSColor.secondaryLabelColor]
+        let tickPath = NSBezierPath()
+        tickPath.lineWidth = 1
+
+        // Top ruler: x positions.
+        let firstX = Int(floor((Double(rulerSize - viewOffset.x)) / scale / minor))
+        let lastX = Int(ceil((Double(bounds.maxX - viewOffset.x)) / scale / minor))
+        for index in firstX...max(firstX, lastX) {
+            let value = Double(index) * minor
+            let x = CGFloat(value * scale) + viewOffset.x
+            guard x > rulerSize else { continue }
+            let isMajor = index % Int(divisions) == 0
+            tickPath.move(to: CGPoint(x: x, y: topStrip.minY)); tickPath.line(to: CGPoint(x: x, y: topStrip.minY + (isMajor ? 9 : 4)))
+            if isMajor { (rulerLabel(value) as NSString).draw(at: CGPoint(x: x + 3, y: topStrip.minY + 7), withAttributes: attributes) }
+        }
+        // Left ruler: y positions, with the labels turned to read upward.
+        let firstY = Int(floor(Double(0 - viewOffset.y) / scale / minor))
+        let lastY = Int(ceil(Double(topStrip.minY - viewOffset.y) / scale / minor))
+        for index in firstY...max(firstY, lastY) {
+            let value = Double(index) * minor
+            let y = CGFloat(value * scale) + viewOffset.y
+            guard y < topStrip.minY else { continue }
+            let isMajor = index % Int(divisions) == 0
+            tickPath.move(to: CGPoint(x: leftStrip.maxX, y: y)); tickPath.line(to: CGPoint(x: leftStrip.maxX - (isMajor ? 9 : 4), y: y))
+            if isMajor {
+                NSGraphicsContext.saveGraphicsState()
+                let transform = NSAffineTransform()
+                transform.translateX(by: leftStrip.maxX - 9, yBy: y + 3)
+                transform.rotate(byDegrees: 90)
+                transform.concat()
+                (rulerLabel(value) as NSString).draw(at: .zero, withAttributes: attributes)
+                NSGraphicsContext.restoreGraphicsState()
+            }
+        }
+        NSColor.tertiaryLabelColor.setStroke()
+        tickPath.stroke()
+
+        // Marks where each guide crosses the rulers.
+        for guide in resolvedGuides() where guide.isCustom {
+            let mark = NSBezierPath()
+            mark.lineWidth = 2
+            switch guide.axis {
+            case .vertical:
+                let x = CGFloat(guide.position) * pointsPerInch + viewOffset.x
+                mark.move(to: CGPoint(x: x, y: topStrip.minY)); mark.line(to: CGPoint(x: x, y: bounds.maxY))
+            case .horizontal:
+                let y = CGFloat(guide.position) * pointsPerInch + viewOffset.y
+                mark.move(to: CGPoint(x: 0, y: y)); mark.line(to: CGPoint(x: leftStrip.maxX, y: y))
+            }
+            guide.color.setStroke()
+            mark.stroke()
+        }
     }
 
     // MARK: - Zoom to Fit
@@ -977,6 +1240,22 @@ class DisplayArrangementView: NSView {
         with event: NSEvent
     ) {
         let point = convert(event.locationInWindow, from: nil)
+        window?.makeFirstResponder(self)
+
+        // Dragging out of a ruler creates a guide; dragging a custom guide moves it.
+        if let axis = rulerAxis(at: point) {
+            GuideSettings.showGuides = true
+            let guide = Guide(axis: axis, position: guidePosition(for: point, axis: axis))
+            GuideStore.shared.add(guide)
+            guideDrag = guide.id
+            guideDragPoint = point
+            return
+        }
+        if let guide = customGuide(at: point) {
+            guideDrag = guide.id
+            guideDragPoint = point
+            return
+        }
 
         // The lock icon is only visible (and clickable) on locked or selected displays.
         if let locked = physicalLayout.displays.reversed().first(where: {
@@ -1028,6 +1307,12 @@ class DisplayArrangementView: NSView {
         with event: NSEvent
     ) {
         let currentPoint = convert(event.locationInWindow, from: nil)
+
+        if let guideDrag, let guide = GuideStore.shared.guide(withID: guideDrag) {
+            GuideStore.shared.setPosition(guidePosition(for: currentPoint, axis: guide.axis), for: guideDrag)
+            guideDragPoint = currentPoint
+            return
+        }
 
         if let dragTarget {
             let rect: CGRect
@@ -1103,6 +1388,15 @@ class DisplayArrangementView: NSView {
     override func mouseUp(
         with event: NSEvent
     ) {
+        if let guideDrag, let guide = GuideStore.shared.guide(withID: guideDrag) {
+            // Dropping a guide back on its ruler removes it.
+            let point = convert(event.locationInWindow, from: nil)
+            let onRuler = guide.axis == .horizontal ? point.x <= rulerSize : point.y >= bounds.maxY - rulerSize
+            if onRuler { GuideStore.shared.remove(guideDrag) } else { GuideStore.shared.save() }
+            self.guideDrag = nil
+            needsDisplay = true
+            return
+        }
         isPanning = false
         isZoomDragging = false
         if case .display? = dragTarget {

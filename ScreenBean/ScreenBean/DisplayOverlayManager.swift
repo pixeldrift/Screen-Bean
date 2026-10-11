@@ -33,6 +33,8 @@ final class DisplayOverlayManager {
     var clickThroughViews: [NSView] = []
 
     private var identities: [DisplayIdentity] = []
+    private var guides: [ResolvedGuide] = []
+    private var panels: [CGDirectDisplayID: CGRect] = [:]
     private var selectedID: CGDirectDisplayID?
     private var windows: [CGDirectDisplayID: NSWindow] = [:]
     private var globalMonitor: Any?
@@ -46,9 +48,13 @@ final class DisplayOverlayManager {
     }
 
     /// Call whenever the displays, their appearance or the selection change.
-    func update(displays: [DisplayInfo], selectedID: CGDirectDisplayID?) {
+    /// `guides` are in physical inches and `panels` give each display's place on that canvas,
+    /// which is how a guide is mapped onto every real screen it crosses.
+    func update(displays: [DisplayInfo], selectedID: CGDirectDisplayID?, guides: [ResolvedGuide], panels: [CGDirectDisplayID: CGRect]) {
         identities = DisplayIdentity.identities(for: displays)
         self.selectedID = selectedID
+        self.guides = guides
+        self.panels = panels
         refresh()
     }
 
@@ -79,12 +85,13 @@ final class DisplayOverlayManager {
             let showsIdentity = identifyEnabled && !(excludePrimary && identity.isPrimary)
             let showsBorder = identity.id == selectedID
             let preview = previewImages?[identity.id]
-            guard showsIdentity || showsBorder || preview != nil, let screen = NSScreen.screen(forDisplayID: identity.id) else { continue }
+            let showsGuides = GuideSettings.showGuides && GuideSettings.showOnScreens && !guides.isEmpty && panels[identity.id] != nil
+            guard showsIdentity || showsBorder || preview != nil || showsGuides, let screen = NSScreen.screen(forDisplayID: identity.id) else { continue }
             wanted.insert(identity.id)
             let window = windows[identity.id] ?? makeWindow()
             windows[identity.id] = window
             window.setFrame(screen.frame, display: false)
-            (window.contentView as? OverlayView)?.configure(identity, showsIdentity: showsIdentity, showsBorder: showsBorder, preview: preview)
+            (window.contentView as? OverlayView)?.configure(identity, showsIdentity: showsIdentity, showsBorder: showsBorder, preview: preview, guides: showsGuides ? guides : [], panel: panels[identity.id])
             window.orderFrontRegardless()
         }
         for id in Array(windows.keys) where !wanted.contains(id) {
@@ -160,9 +167,13 @@ private final class OverlayView: NSView {
     private var showsIdentity = false
     private var showsBorder = false
     private var preview: CGImage?
+    private var guides: [ResolvedGuide] = []
+    private var panel: CGRect?
 
-    func configure(_ identity: DisplayIdentity, showsIdentity: Bool, showsBorder: Bool, preview: CGImage?) {
+    func configure(_ identity: DisplayIdentity, showsIdentity: Bool, showsBorder: Bool, preview: CGImage?, guides: [ResolvedGuide], panel: CGRect?) {
         self.identity = identity
+        self.guides = guides
+        self.panel = panel
         self.showsIdentity = showsIdentity
         self.showsBorder = showsBorder
         self.preview = preview
@@ -185,7 +196,33 @@ private final class OverlayView: NSView {
             )
         }
         if showsIdentity { drawIdentityMarks(identity) }
+        drawGuides()
         if showsBorder { drawBorder(color) }
+    }
+
+    /// Guides in physical inches, mapped onto this screen through the display's place on the canvas.
+    private func drawGuides() {
+        guard let panel, panel.width > 0, panel.height > 0 else { return }
+        for guide in guides {
+            let path = NSBezierPath()
+            switch guide.axis {
+            case .vertical:
+                let x = bounds.minX + CGFloat((guide.position - Double(panel.minX)) / Double(panel.width)) * bounds.width
+                guard x >= bounds.minX, x <= bounds.maxX else { continue }
+                path.move(to: CGPoint(x: x, y: bounds.minY)); path.line(to: CGPoint(x: x, y: bounds.maxY))
+            case .horizontal:
+                let y = bounds.minY + CGFloat((guide.position - Double(panel.minY)) / Double(panel.height)) * bounds.height
+                guard y >= bounds.minY, y <= bounds.maxY else { continue }
+                path.move(to: CGPoint(x: bounds.minX, y: y)); path.line(to: CGPoint(x: bounds.maxX, y: y))
+            }
+            NSColor.black.withAlphaComponent(0.45).setStroke()
+            path.lineWidth = 4
+            path.stroke()
+            guide.color.setStroke()
+            path.lineWidth = 2
+            if !guide.isCustom { path.setLineDash([10, 6], count: 2, phase: 0) }
+            path.stroke()
+        }
     }
 
     /// A bold border in the display's color with a thin white edge so it shows on any content.
