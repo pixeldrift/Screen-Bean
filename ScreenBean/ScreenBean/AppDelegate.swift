@@ -43,6 +43,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             store.saveFrame(frame, for: slot)
             (slot == .referenceImage ? sidebar?.referenceImagePanel : sidebar?.wallpaperPanel)?.showFrame(frame)
         }
+        mainView.onImageLockChanged = { [weak sidebar] slot, locked in
+            store.saveLocked(locked, for: slot)
+            (slot == .referenceImage ? sidebar?.referenceImagePanel : sidebar?.wallpaperPanel)?.setLocked(locked)
+        }
         mainView.wallpaperClipsToDisplays = store.loadWallpaperClip()
         sidebar.wallpaperPanel.restoreClip(store.loadWallpaperClip())
         sidebar.wallpaperPanel.onClipChanged = { [weak mainView] clipped in
@@ -52,7 +56,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         for (slot, panel) in layerPanels {
             let image = store.loadImage(slot), blend = store.loadBlend(slot)
             panel.restore(image: image, blend: blend)
-            setLayer(slot) { $0.image = image; $0.blend = ImageLayerBlend(value: blend); $0.frame = store.loadFrame(slot) }
+            let locked = store.loadLocked(slot)
+            panel.setLocked(locked)
+            setLayer(slot) { $0.image = image; $0.blend = ImageLayerBlend(value: blend); $0.frame = store.loadFrame(slot); $0.isLocked = locked }
+            panel.onLockChanged = { locked in
+                store.saveLocked(locked, for: slot)
+                setLayer(slot) { $0.isLocked = locked }
+            }
             panel.onFrameChanged = { frame in
                 setLayer(slot) { $0.frame = frame }
                 store.saveFrame(frame, for: slot)
@@ -60,6 +70,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             panel.onImageChanged = { image, data in
                 store.saveImageData(data, for: slot)
                 setLayer(slot) { $0.image = image }
+                // A removed image shouldn't leave its lock behind for the next one.
+                if image == nil {
+                    store.saveLocked(false, for: slot)
+                    panel.setLocked(false)
+                    setLayer(slot) { $0.isLocked = false }
+                }
             }
             panel.onBlendChanged = { value in
                 store.saveBlend(value, for: slot)

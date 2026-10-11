@@ -30,6 +30,8 @@ class DisplayArrangementView: NSView {
         var image: NSImage?
         var blend = ImageLayerBlend(value: 0)
         var frame: ImageFrame?
+        /// A locked image can't be moved or scaled.
+        var isLocked = false
     }
 
     /// Photo or plan drawn as a layout reference, independent of the displays.
@@ -40,6 +42,8 @@ class DisplayArrangementView: NSView {
     var wallpaperClipsToDisplays = false { didSet { needsDisplay = true } }
     /// Called when an image is moved or scaled in the workspace, or its frame is created or cleared.
     var onImageFrameChanged: ((ImageLayerSlot, ImageFrame?) -> Void)?
+    /// Called when an image is locked or unlocked from its on-canvas lock icon.
+    var onImageLockChanged: ((ImageLayerSlot, Bool) -> Void)?
 
     /// Image layers from back to front.
     private let imageSlots: [ImageLayerSlot] = [.referenceImage, .wallpaper]
@@ -306,6 +310,7 @@ class DisplayArrangementView: NSView {
             )
         }
         for slot in imageSlots where layer(slot).blend.aboveDisplays { drawImageLayer(slot) }
+        drawImageLockIcons(in: context)
         var withHandles: [EditTarget] = []
         for target in [currentSelection, hoverTarget].compactMap({ $0 }) where !withHandles.contains(target) {
             withHandles.append(target)
@@ -613,11 +618,38 @@ class DisplayArrangementView: NSView {
     /// Locked displays always show the lock; unlocked ones show it while selected.
     private func drawLockIcon(for display: PhysicalLayout.Display, in rect: CGRect, isSelected: Bool) {
         guard display.isLocked || isSelected else { return }
-        let name = display.isLocked ? "lock.fill" : "lock.open.fill"
-        guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: display.isLocked ? "Locked" : "Unlocked")?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [NSColor.white.withAlphaComponent(display.isLocked ? 0.9 : 0.55)]))
+        drawLockSymbol(locked: display.isLocked, in: lockIconRect(in: rect))
+    }
+
+    private func drawLockSymbol(locked: Bool, in iconRect: CGRect) {
+        let name = locked ? "lock.fill" : "lock.open.fill"
+        guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: locked ? "Locked" : "Unlocked")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [NSColor.white.withAlphaComponent(locked ? 0.9 : 0.55)]))
         else { return }
-        symbol.draw(in: lockIconRect(in: rect))
+        symbol.draw(in: iconRect)
+    }
+
+    /// Lock icon in an image's top-right corner; shown while it is locked or selected.
+    private func imageLockIconRect(_ slot: ImageLayerSlot) -> CGRect? {
+        let current = layer(slot)
+        guard current.blend.opacity > 0, let physical = physicalRect(of: current), (current.isLocked || selectedImage == slot) else { return nil }
+        let rect = viewRect(forPhysical: physical)
+        return CGRect(x: rect.maxX - lockIconSize - 8, y: rect.maxY - lockIconSize - 8, width: lockIconSize, height: lockIconSize)
+    }
+
+    private func drawImageLockIcons(in context: CGContext) {
+        for slot in imageSlots {
+            guard let icon = imageLockIconRect(slot) else { continue }
+            // A dark disc keeps the white icon readable over photos.
+            context.setFillColor(NSColor.black.withAlphaComponent(0.45).cgColor)
+            context.fillEllipse(in: icon.insetBy(dx: -5, dy: -5))
+            drawLockSymbol(locked: layer(slot).isLocked, in: icon)
+        }
+    }
+
+    /// Locks or unlocks an image, e.g. from the sidebar.
+    func setImageLocked(_ locked: Bool, for slot: ImageLayerSlot) {
+        if slot == .referenceImage { referenceLayer.isLocked = locked } else { wallpaperLayer.isLocked = locked }
     }
 
     // MARK: - Geometry
@@ -655,7 +687,7 @@ class DisplayArrangementView: NSView {
     private func isEditable(_ target: EditTarget) -> Bool {
         switch target {
         case .display(let id): return physicalLayout.displays.first(where: { $0.id == id })?.isLocked == false
-        case .image(let slot): return layer(slot).image != nil
+        case .image(let slot): return layer(slot).image != nil && !layer(slot).isLocked
         }
     }
 
@@ -871,6 +903,15 @@ class DisplayArrangementView: NSView {
         }) {
             select(.display(locked.id))
             updateSelectedDisplay(DisplayEdit(isLocked: !locked.isLocked))
+            return
+        }
+
+        // Image lock icons behave the same way.
+        if let slot = imageSlots.reversed().first(where: { imageLockIconRect($0)?.contains(point) == true }) {
+            select(.image(slot))
+            let locked = !layer(slot).isLocked
+            setImageLocked(locked, for: slot)
+            onImageLockChanged?(slot, locked)
             return
         }
 

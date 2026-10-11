@@ -15,6 +15,8 @@ final class ImageLayerPanel: NSView {
     var onImageChanged: ((NSImage?, Data?) -> Void)?
     /// Called with a blend value from -1 to 1. See `ImageLayerBlend`.
     var onBlendChanged: ((Double) -> Void)?
+    /// Called when the lock button is clicked.
+    var onLockChanged: ((Bool) -> Void)?
     /// Called when the clip-to-displays checkbox changes (wallpaper only).
     var onClipChanged: ((Bool) -> Void)?
     /// Called when the user edits the position or scale fields.
@@ -27,6 +29,8 @@ final class ImageLayerPanel: NSView {
     private let readout = NSTextField(labelWithString: "")
     private let x = NumberInput(), y = NumberInput(), width = NumberInput(), height = NumberInput()
     private var transformSection: NSView?
+    private let lockButton = NSButton()
+    private var isLocked = false
     private let clipCheckbox = NSButton(checkboxWithTitle: "Preview clipped to displays", target: nil, action: nil)
 
     private let titleText: String
@@ -54,9 +58,19 @@ final class ImageLayerPanel: NSView {
         dropZone.image = image
         clearButton.isEnabled = image != nil
         slider.isEnabled = image != nil
+        lockButton.isEnabled = image != nil
         slider.doubleValue = blend
         updateReadout()
         updateTransformVisibility()
+    }
+
+    /// Shows the lock state without notifying `onLockChanged`. A locked image's position fields are read-only.
+    func setLocked(_ locked: Bool) {
+        isLocked = locked
+        lockButton.image = NSImage(systemSymbolName: locked ? "lock.fill" : "lock.open", accessibilityDescription: locked ? "Unlock image" : "Lock image")
+        lockButton.contentTintColor = locked ? .labelColor : .secondaryLabelColor
+        lockButton.toolTip = locked ? "Locked – click to allow moving and scaling" : "Lock this image's position and scale"
+        for input in [x, y, width, height] { input.isEnabled = !locked }
     }
 
     /// Shows the saved clip setting without notifying `onClipChanged`.
@@ -118,7 +132,16 @@ final class ImageLayerPanel: NSView {
         let heading = NSTextField(labelWithString: "OPACITY & LAYER")
         heading.font = .boldSystemFont(ofSize: 10); heading.textColor = .secondaryLabelColor
 
-        var views: [NSView] = [title, dropZone, buttons]
+        lockButton.isBordered = false
+        lockButton.imageScaling = .scaleProportionallyUpOrDown
+        lockButton.target = self; lockButton.action = #selector(lockToggled)
+        lockButton.widthAnchor.constraint(equalToConstant: 18).isActive = true
+        lockButton.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        setLocked(false)
+        let header = NSStackView(views: [title, NSView(), lockButton])
+        header.distribution = .fill
+
+        var views: [NSView] = [header, dropZone, buttons]
         if showsTransform {
             let section = buildTransformSection()
             transformSection = section
@@ -133,7 +156,7 @@ final class ImageLayerPanel: NSView {
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
-        var fullWidth: [NSView] = [dropZone, sliderHolder, ends]
+        var fullWidth: [NSView] = [header, dropZone, sliderHolder, ends]
         if let transformSection { fullWidth.append(transformSection) }
         for v in fullWidth { v.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
         NSLayoutConstraint.activate([
@@ -201,10 +224,16 @@ final class ImageLayerPanel: NSView {
         dropZone.image = image
         clearButton.isEnabled = image != nil
         slider.isEnabled = image != nil
+        lockButton.isEnabled = image != nil
         // Make a freshly chosen image visible, sitting below the displays.
         if image != nil, slider.doubleValue == 0 { slider.doubleValue = -1; onBlendChanged?(-1) }
         updateReadout()
         updateTransformVisibility()
+    }
+
+    @objc private func lockToggled() {
+        setLocked(!isLocked)
+        onLockChanged?(isLocked)
     }
 
     @objc private func clipToggled() { onClipChanged?(clipCheckbox.state == .on) }

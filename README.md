@@ -509,7 +509,7 @@ macOS has no public API for changing a display's rotation, so these edit Screen 
 * [x]	Position and scale wallpaper
 * [x]	Preview wallpaper across displays
 * [x]	Toggle preview clipped to the displays
-* [ ]	Account for display gaps
+* [x]	Lock wallpaper
 * [ ]	Account for display rotation
 * [ ]	Calculate output resolution
 * [ ]	Slice unified image into per-display images
@@ -523,7 +523,7 @@ macOS has no public API for changing a display's rotation, so these edit Screen 
 * [x]	Scale reference image
 * [x]	Adjust reference transparency
 * [ ]	Rotate reference image
-* [ ]	Lock reference image
+* [x]	Lock reference image
 * [ ]	Four-corner perspective correction
 * [ ]	Overlay windows on every display, so tools can draw outside the app window
 * [ ]	Rulers and alignment guides (one tool, drawn across all displays)
@@ -571,9 +571,6 @@ macOS has no public API for changing a display's rotation, so these edit Screen 
 Rarely needed, so these wait until the main phases are working.
 
 * [ ]	Rotate displays to arbitrary angles (angled installations)
-* [ ]	Image warping
-* [ ]	Lens/perspective compensation
-* [ ]	Calibration patterns
 
 ---
 

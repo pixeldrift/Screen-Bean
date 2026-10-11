@@ -69,6 +69,11 @@ final class ImageLayerStore {
     func loadWallpaperClip() -> Bool { defaults.bool(forKey: clipKey) }
     func saveWallpaperClip(_ clipped: Bool) { defaults.set(clipped, forKey: clipKey) }
 
+    private func lockKey(_ slot: ImageLayerSlot) -> String { "ScreenBean.ImageLayer.\(slot.rawValue).locked" }
+
+    func loadLocked(_ slot: ImageLayerSlot) -> Bool { defaults.bool(forKey: lockKey(slot)) }
+    func saveLocked(_ locked: Bool, for slot: ImageLayerSlot) { defaults.set(locked, forKey: lockKey(slot)) }
+
     func loadBlend(_ slot: ImageLayerSlot) -> Double {
         defaults.object(forKey: blendKey(slot)) as? Double ?? 0
     }
