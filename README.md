@@ -482,6 +482,11 @@ This allows Screen Bean to restore display-specific configuration between launch
 * [x]	Drag displays
 * [x]	Edit physical dimensions
 * [ ]	Display calibration UI
+* [ ]	Detect each display's rotation and mirroring from macOS
+* [ ]	Rotate display clockwise (90°)
+* [ ]	Rotate display counterclockwise (90°)
+* [ ]	Flip display horizontally (mirror)
+* [ ]	Flip display vertically (mirror)
 * [ ]	Type fractional measurements (for example "23 1/8") in number inputs
 * [ ]	Toggle number inputs between decimal and fractions (nearest 16th)
 * [ ]	Unit options (inches, centimeters, and others)
@@ -562,11 +567,7 @@ The sidebar for editing the selected display: nickname, physical size, position,
 
 Rarely needed, so these wait until the main phases are working.
 
-* [ ]	Rotate displays
-* [ ]	Rotate display clockwise (90°)
-* [ ]	Rotate display counterclockwise (90°)
-* [ ]	Flip display horizontally (mirror)
-* [ ]	Flip display vertically (mirror)
+* [ ]	Rotate displays to arbitrary angles (angled installations)
 
 ---
 
