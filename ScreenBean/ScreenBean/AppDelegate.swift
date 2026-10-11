@@ -50,13 +50,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         sidebar.translatesAutoresizingMaskIntoConstraints = false
-        inspector.onChange = { nickname, width, height, x, y, color, uniform, top, bottom, left, right in
-            mainView.updateSelectedDisplay(
-                nickname: nickname, width: width, height: height,
-                x: x, y: y, color: color, uniformBezel: uniform,
-                bezelTop: top, bezelBottom: bottom, bezelLeft: left, bezelRight: right
-            )
-        }
+        inspector.onChange = { [weak mainView] edit in mainView?.updateSelectedDisplay(edit) }
         mainView.onSelectionChanged = { [weak mainView, weak sidebar] display in
             sidebar?.setDisplaySelected(display != nil)
             let position = mainView?.selectedPosition()

@@ -25,6 +25,8 @@ struct DisplayConfiguration: Codable {
     var bezelBottom: Double
     var bezelLeft: Double
     var bezelRight: Double
+    var showBezel: Bool
+    var isLocked: Bool
 
     init(
         persistentID: String,
@@ -40,7 +42,9 @@ struct DisplayConfiguration: Codable {
         bezelTop: Double = DisplayDefaults.bezelInches,
         bezelBottom: Double = DisplayDefaults.bezelInches,
         bezelLeft: Double = DisplayDefaults.bezelInches,
-        bezelRight: Double = DisplayDefaults.bezelInches
+        bezelRight: Double = DisplayDefaults.bezelInches,
+        showBezel: Bool = true,
+        isLocked: Bool = false
     ) {
         self.persistentID = persistentID
         self.nickname = nickname
@@ -56,12 +60,15 @@ struct DisplayConfiguration: Codable {
         self.bezelBottom = bezelBottom
         self.bezelLeft = bezelLeft
         self.bezelRight = bezelRight
+        self.showBezel = showBezel
+        self.isLocked = isLocked
     }
 
     private enum CodingKeys: String, CodingKey {
         case persistentID, nickname, widthInches, heightInches
         case xInches, yInches, rotation, isCalibrated
         case colorHex, uniformBezel, bezelTop, bezelBottom, bezelLeft, bezelRight
+        case showBezel, isLocked
     }
 
     init(from decoder: Decoder) throws {
@@ -80,5 +87,7 @@ struct DisplayConfiguration: Codable {
         bezelBottom = try values.decodeIfPresent(Double.self, forKey: .bezelBottom) ?? DisplayDefaults.bezelInches
         bezelLeft = try values.decodeIfPresent(Double.self, forKey: .bezelLeft) ?? DisplayDefaults.bezelInches
         bezelRight = try values.decodeIfPresent(Double.self, forKey: .bezelRight) ?? DisplayDefaults.bezelInches
+        showBezel = try values.decodeIfPresent(Bool.self, forKey: .showBezel) ?? true
+        isLocked = try values.decodeIfPresent(Bool.self, forKey: .isLocked) ?? false
     }
 }

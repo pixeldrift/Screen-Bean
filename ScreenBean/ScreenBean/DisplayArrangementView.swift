@@ -147,6 +147,7 @@ class DisplayArrangementView: NSView {
                 uniformBezel: display.uniformBezel,
                 bezelTop: CGFloat(display.bezelTop), bezelBottom: CGFloat(display.bezelBottom),
                 bezelLeft: CGFloat(display.bezelLeft), bezelRight: CGFloat(display.bezelRight),
+                showBezel: display.showBezel, isLocked: display.isLocked,
                 x: CGFloat(saved?.xInches ?? Double(physicalX)),
                 y: CGFloat(saved?.yInches ?? Double(physicalY)),
                 width: physicalWidth, height: physicalHeight
@@ -355,45 +356,60 @@ class DisplayArrangementView: NSView {
     ) {
         // Bezel thickness is stored in physical inches and scales with the canvas.
         let scale = pointsPerInch
-        let uniform = display.uniformBezel ? max(0, display.bezelTop) : 0
-        let top = (display.uniformBezel ? uniform : max(0, display.bezelTop)) * scale
-        let bottom = (display.uniformBezel ? uniform : max(0, display.bezelBottom)) * scale
-        let left = (display.uniformBezel ? uniform : max(0, display.bezelLeft)) * scale
-        let right = (display.uniformBezel ? uniform : max(0, display.bezelRight)) * scale
+        func bezel(_ value: CGFloat) -> CGFloat { display.showBezel ? max(0, value) * scale : 0 }
+        let top = bezel(display.bezelTop)
+        let bottom = bezel(display.uniformBezel ? display.bezelTop : display.bezelBottom)
+        let left = bezel(display.uniformBezel ? display.bezelTop : display.bezelLeft)
+        let right = bezel(display.uniformBezel ? display.bezelTop : display.bezelRight)
         let outerRect = CGRect(
             x: rect.minX - left,
             y: rect.minY - bottom,
             width: rect.width + left + right,
             height: rect.height + top + bottom
         )
+        let frameColor = NSColor(calibratedWhite: 0.30, alpha: 1)
 
         // Draw shadow first so it falls outside the monitor's physical frame.
         context.saveGState()
         context.setShadow(
-            offset: CGSize(width: 0, height: -2),
-            blur: max(3, 7 * zoom),
-            color: NSColor.black.withAlphaComponent(0.30).cgColor
+            offset: CGSize(width: 0, height: -6 * max(zoom, 0.5)),
+            blur: max(10, 26 * zoom),
+            color: NSColor.black.withAlphaComponent(0.65).cgColor
         )
-        context.setFillColor(NSColor(calibratedWhite: 0.30, alpha: 1).cgColor)
+        context.setFillColor(frameColor.cgColor)
         context.fill(outerRect)
         context.restoreGState()
 
-        // Dark inner frame, then the colored active panel.
-        context.setFillColor(NSColor(calibratedWhite: 0.30, alpha: 1).cgColor)
-        context.fill(outerRect)
-        let bezelInset: CGFloat = min(1.5, max(0, min(outerRect.width, outerRect.height) / 100))
-        let innerFrame = outerRect.insetBy(dx: bezelInset, dy: bezelInset)
-        context.setFillColor(NSColor(calibratedWhite: 0.08, alpha: 1).cgColor)
-        context.fill(innerFrame)
+        // Bezel frame: a soft top-to-bottom gradient with a raised bevel edge.
+        if display.showBezel, let frameGradient = CGGradient(
+            colorsSpace: CGColorSpaceCreateDeviceRGB(),
+            colors: [NSColor(calibratedWhite: 0.38, alpha: 1).cgColor, NSColor(calibratedWhite: 0.20, alpha: 1).cgColor] as CFArray,
+            locations: [0, 1]
+        ) {
+            context.saveGState()
+            context.addRect(outerRect)
+            context.clip()
+            context.drawLinearGradient(
+                frameGradient,
+                start: CGPoint(x: outerRect.midX, y: outerRect.maxY),
+                end: CGPoint(x: outerRect.midX, y: outerRect.minY),
+                options: []
+            )
+            context.restoreGState()
+            drawBevel(in: context, rect: outerRect, raised: true, width: 1.5)
+        } else {
+            context.setFillColor(frameColor.cgColor)
+            context.fill(outerRect)
+        }
 
         let baseColor = NSColor(displayHex: display.colorHex)
-        let light = baseColor.blended(withFraction: 0.20, of: .white) ?? baseColor
-        let dark = baseColor.blended(withFraction: 0.24, of: .black) ?? baseColor
+        let light = baseColor.blended(withFraction: 0.45, of: .white) ?? baseColor
+        let dark = baseColor.blended(withFraction: 0.50, of: .black) ?? baseColor
         let colors = [light.cgColor, baseColor.cgColor, dark.cgColor] as CFArray
         if let gradient = CGGradient(
             colorsSpace: CGColorSpaceCreateDeviceRGB(),
             colors: colors,
-            locations: [0, 0.55, 1]
+            locations: [0, 0.5, 1]
         ) {
             context.saveGState()
             context.addRect(rect)
@@ -410,13 +426,16 @@ class DisplayArrangementView: NSView {
             context.fill(rect)
         }
 
-        context.setStrokeColor(
-            isSelected
-                ? NSColor.controlAccentColor.cgColor
-                : NSColor.labelColor.withAlphaComponent(0.45).cgColor
-        )
-        context.setLineWidth(isSelected ? 2 : 1)
-        context.stroke(rect)
+        // The panel sits slightly recessed into the frame.
+        drawBevel(in: context, rect: rect, raised: false, width: 2)
+
+        if isSelected {
+            context.setStrokeColor(NSColor.controlAccentColor.cgColor)
+            context.setLineWidth(2)
+            context.stroke(outerRect.insetBy(dx: -1, dy: -1))
+        }
+
+        drawLockIcon(for: display, in: rect, isSelected: isSelected)
 
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
@@ -446,6 +465,42 @@ class DisplayArrangementView: NSView {
             height: 18
         )
         sizeText.draw(in: sizeRect, withAttributes: sizeAttributes)
+    }
+
+    /// Light and dark edge lines that make a rectangle look raised or recessed.
+    private func drawBevel(in context: CGContext, rect: CGRect, raised: Bool, width: CGFloat) {
+        let highlight = NSColor.white.withAlphaComponent(raised ? 0.35 : 0.18).cgColor
+        let shade = NSColor.black.withAlphaComponent(raised ? 0.45 : 0.55).cgColor
+        let topLeft = raised ? highlight : shade
+        let bottomRight = raised ? shade : highlight
+        let r = rect.insetBy(dx: width / 2, dy: width / 2)
+        context.saveGState()
+        context.setLineWidth(width)
+        context.setStrokeColor(topLeft)
+        context.move(to: CGPoint(x: r.minX, y: r.minY)); context.addLine(to: CGPoint(x: r.minX, y: r.maxY)); context.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+        context.strokePath()
+        context.setStrokeColor(bottomRight)
+        context.move(to: CGPoint(x: r.minX, y: r.minY)); context.addLine(to: CGPoint(x: r.maxX, y: r.minY)); context.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+        context.strokePath()
+        context.restoreGState()
+    }
+
+    // MARK: - Display Lock
+    private let lockIconSize: CGFloat = 18
+
+    /// Clickable area of the lock icon in the display's top-right corner.
+    private func lockIconRect(in rect: CGRect) -> CGRect {
+        CGRect(x: rect.maxX - lockIconSize - 8, y: rect.maxY - lockIconSize - 8, width: lockIconSize, height: lockIconSize)
+    }
+
+    /// Locked displays always show the lock; unlocked ones show it while selected.
+    private func drawLockIcon(for display: PhysicalLayout.Display, in rect: CGRect, isSelected: Bool) {
+        guard display.isLocked || isSelected else { return }
+        let name = display.isLocked ? "lock.fill" : "lock.open.fill"
+        guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: display.isLocked ? "Locked" : "Unlocked")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [NSColor.white.withAlphaComponent(display.isLocked ? 0.9 : 0.55)]))
+        else { return }
+        symbol.draw(in: lockIconRect(in: rect))
     }
 
     // MARK: - Zoom to Fit
@@ -524,11 +579,18 @@ class DisplayArrangementView: NSView {
         if let hit = physicalLayout.displays.reversed().first(where: {
             physicalRectToView($0).contains(point)
         }) {
+            // The lock icon is only visible (and clickable) on locked or already-selected displays.
+            let lockIsVisible = hit.isLocked || selectedDisplayID == hit.id
             selectedDisplayID = hit.id
             onSelectionChanged?(
                 displays.first(where: { $0.displayID == hit.id })
             )
             isPanning = false
+            if lockIsVisible, lockIconRect(in: physicalRectToView(hit)).contains(point) {
+                updateSelectedDisplay(DisplayEdit(isLocked: !hit.isLocked))
+                return
+            }
+            if hit.isLocked { needsDisplay = true; return }
             draggingDisplayID = hit.id
             dragStartPoint = point
             if let selectedLayoutDisplay = physicalLayout.displays.first(where: { $0.id == hit.id }) {
@@ -607,20 +669,24 @@ class DisplayArrangementView: NSView {
         return (item.x, item.y)
     }
 
-    func updateSelectedDisplay(nickname: String? = nil, width: Double? = nil, height: Double? = nil, x: Double? = nil, y: Double? = nil, color: NSColor? = nil, uniformBezel: Bool? = nil, bezelTop: Double? = nil, bezelBottom: Double? = nil, bezelLeft: Double? = nil, bezelRight: Double? = nil) {
+    func updateSelectedDisplay(_ edit: DisplayEdit) {
         guard let id = selectedDisplayID, let i = displays.firstIndex(where: { $0.displayID == id }), let j = physicalLayout.displays.firstIndex(where: { $0.id == id }) else { return }
+        // A locked display only accepts the change that unlocks it.
+        if displays[i].isLocked && edit.isLocked == nil { return }
         suppressDisplayRebuild = true
-        if let nickname, !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { displays[i].nickname = nickname; physicalLayout.displays[j].nickname = nickname }
-        if let width, width > 0.1 { displays[i].physicalWidthInches = width; physicalLayout.displays[j].width = width }
-        if let height, height > 0.1 { displays[i].physicalHeightInches = height; physicalLayout.displays[j].height = height }
-        if let x { physicalLayout.displays[j].x = x }
-        if let y { physicalLayout.displays[j].y = y }
-        if let color { displays[i].colorHex = color.displayHex; physicalLayout.displays[j].colorHex = color.displayHex }
-        if let uniformBezel { displays[i].uniformBezel = uniformBezel; physicalLayout.displays[j].uniformBezel = uniformBezel }
-        if let bezelTop { displays[i].bezelTop = bezelTop; physicalLayout.displays[j].bezelTop = bezelTop }
-        if let bezelBottom { displays[i].bezelBottom = bezelBottom; physicalLayout.displays[j].bezelBottom = bezelBottom }
-        if let bezelLeft { displays[i].bezelLeft = bezelLeft; physicalLayout.displays[j].bezelLeft = bezelLeft }
-        if let bezelRight { displays[i].bezelRight = bezelRight; physicalLayout.displays[j].bezelRight = bezelRight }
+        if let nickname = edit.nickname, !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { displays[i].nickname = nickname; physicalLayout.displays[j].nickname = nickname }
+        if let width = edit.width, width > 0.1 { displays[i].physicalWidthInches = width; physicalLayout.displays[j].width = width }
+        if let height = edit.height, height > 0.1 { displays[i].physicalHeightInches = height; physicalLayout.displays[j].height = height }
+        if let x = edit.x { physicalLayout.displays[j].x = x }
+        if let y = edit.y { physicalLayout.displays[j].y = y }
+        if let color = edit.color { displays[i].colorHex = color.displayHex; physicalLayout.displays[j].colorHex = color.displayHex }
+        if let uniformBezel = edit.uniformBezel { displays[i].uniformBezel = uniformBezel; physicalLayout.displays[j].uniformBezel = uniformBezel }
+        if let bezelTop = edit.bezelTop { displays[i].bezelTop = bezelTop; physicalLayout.displays[j].bezelTop = CGFloat(bezelTop) }
+        if let bezelBottom = edit.bezelBottom { displays[i].bezelBottom = bezelBottom; physicalLayout.displays[j].bezelBottom = CGFloat(bezelBottom) }
+        if let bezelLeft = edit.bezelLeft { displays[i].bezelLeft = bezelLeft; physicalLayout.displays[j].bezelLeft = CGFloat(bezelLeft) }
+        if let bezelRight = edit.bezelRight { displays[i].bezelRight = bezelRight; physicalLayout.displays[j].bezelRight = CGFloat(bezelRight) }
+        if let showBezel = edit.showBezel { displays[i].showBezel = showBezel; physicalLayout.displays[j].showBezel = showBezel }
+        if let isLocked = edit.isLocked { displays[i].isLocked = isLocked; physicalLayout.displays[j].isLocked = isLocked }
         suppressDisplayRebuild = false
         syncSelectedLayoutToDisplay(save: true)
         needsDisplay = true
@@ -636,6 +702,7 @@ class DisplayArrangementView: NSView {
         configuration.uniformBezel = displays[i].uniformBezel
         configuration.bezelTop = displays[i].bezelTop; configuration.bezelBottom = displays[i].bezelBottom
         configuration.bezelLeft = displays[i].bezelLeft; configuration.bezelRight = displays[i].bezelRight
+        configuration.showBezel = displays[i].showBezel; configuration.isLocked = displays[i].isLocked
         if save { DisplayConfigurationStore.shared.save(configuration) }
     }
 

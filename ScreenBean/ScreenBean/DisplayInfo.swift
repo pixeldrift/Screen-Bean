@@ -43,6 +43,9 @@ struct DisplayInfo {
     var bezelBottom: Double = DisplayDefaults.bezelInches
     var bezelLeft: Double = DisplayDefaults.bezelInches
     var bezelRight: Double = DisplayDefaults.bezelInches
+    var showBezel: Bool = true
+    /// When locked, the display can't be edited or dragged.
+    var isLocked: Bool = false
 
     var aspectRatio: Double {
         Double(pixelWidth) / Double(pixelHeight)
@@ -224,7 +227,9 @@ struct DisplayInfo {
             bezelTop: bezelTop,
             bezelBottom: bezelBottom,
             bezelLeft: bezelLeft,
-            bezelRight: bezelRight
+            bezelRight: bezelRight,
+            showBezel: showBezel,
+            isLocked: isLocked
         )
     }
 
@@ -248,5 +253,7 @@ struct DisplayInfo {
         bezelBottom = configuration.bezelBottom
         bezelLeft = configuration.bezelLeft
         bezelRight = configuration.bezelRight
+        showBezel = configuration.showBezel
+        isLocked = configuration.isLocked
     }
 }

@@ -29,6 +29,8 @@ struct PhysicalLayout {
         var bezelBottom: CGFloat = CGFloat(DisplayDefaults.bezelInches)
         var bezelLeft: CGFloat = CGFloat(DisplayDefaults.bezelInches)
         var bezelRight: CGFloat = CGFloat(DisplayDefaults.bezelInches)
+        var showBezel: Bool = true
+        var isLocked: Bool = false
 
         /// Position of the upper-left corner in physical inches.
         var x: CGFloat
