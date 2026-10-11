@@ -20,6 +20,31 @@ struct ImageFrame: Codable, Equatable {
     var centerX: Double
     var centerY: Double
     var width: Double
+    /// Counterclockwise turn about the center, in degrees.
+    var rotation: Double = 0
+
+    init(centerX: Double, centerY: Double, width: Double, rotation: Double = 0) {
+        self.centerX = centerX
+        self.centerY = centerY
+        self.width = width
+        self.rotation = rotation
+    }
+
+    // Frames saved before rotation existed have no rotation key.
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        centerX = try values.decode(Double.self, forKey: .centerX)
+        centerY = try values.decode(Double.self, forKey: .centerY)
+        width = try values.decode(Double.self, forKey: .width)
+        rotation = try values.decodeIfPresent(Double.self, forKey: .rotation) ?? 0
+    }
+
+    /// An angle brought into -180...180.
+    static func normalized(_ degrees: Double) -> Double {
+        var d = degrees.truncatingRemainder(dividingBy: 360)
+        if d > 180 { d -= 360 } else if d <= -180 { d += 360 }
+        return d
+    }
 }
 
 final class ImageLayerStore {

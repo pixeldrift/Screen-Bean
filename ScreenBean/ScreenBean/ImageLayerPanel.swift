@@ -27,7 +27,7 @@ final class ImageLayerPanel: NSView {
     private let clearButton = NSButton(title: "Clear", target: nil, action: nil)
     private let slider = NSSlider(value: 0, minValue: -1, maxValue: 1, target: nil, action: nil)
     private let readout = NSTextField(labelWithString: "")
-    private let x = NumberInput(), y = NumberInput(), width = NumberInput(), height = NumberInput()
+    private let x = NumberInput(), y = NumberInput(), width = NumberInput(), height = NumberInput(), rotation = NumberInput()
     private var transformSection: NSView?
     /// Controls that only make sense once there is an image to apply them to.
     private var imageOnlyViews: [NSView] = []
@@ -72,7 +72,7 @@ final class ImageLayerPanel: NSView {
         lockButton.image = NSImage(systemSymbolName: locked ? "lock.fill" : "lock.open", accessibilityDescription: locked ? "Unlock image" : "Lock image")
         lockButton.contentTintColor = locked ? .labelColor : .secondaryLabelColor
         lockButton.toolTip = locked ? "Locked – click to allow moving and scaling" : "Lock this image's position and scale"
-        for input in [x, y, width, height] { input.isEnabled = !locked }
+        for input in [x, y, width, height, rotation] { input.isEnabled = !locked }
     }
 
     /// Shows the saved clip setting without notifying `onClipChanged`.
@@ -84,6 +84,7 @@ final class ImageLayerPanel: NSView {
         guard let frame else { return }
         x.value = frame.centerX; y.value = frame.centerY
         width.value = frame.width; height.value = frame.width * aspect
+        rotation.value = frame.rotation
     }
 
     private func build() {
@@ -178,6 +179,11 @@ final class ImageLayerPanel: NSView {
         for input in [x, y, width, height] { input.step = 0.1 }
         x.minimum = -100000; y.minimum = -100000
         width.minimum = 0.1; height.minimum = 0.1
+        // Angles are plain decimals, never fractions of an inch.
+        rotation.isMeasurement = false
+        rotation.minimum = -360
+        rotation.step = 1
+        rotation.onChange = { [weak self] v in self?.edit { $0.rotation = ImageFrame.normalized(v) } }
         x.onChange = { [weak self] v in self?.edit { $0.centerX = v } }
         y.onChange = { [weak self] v in self?.edit { $0.centerY = v } }
         width.onChange = { [weak self] v in self?.edit { $0.width = v } }
@@ -188,7 +194,8 @@ final class ImageLayerPanel: NSView {
         }
         let section = NSStackView(views: [
             twoColumnGrid(x.labeled("X-Pos", unit: "inches"), y.labeled("Y-Pos", unit: "inches")),
-            twoColumnGrid(width.labeled("Width", unit: "inches"), height.labeled("Height", unit: "inches"))
+            twoColumnGrid(width.labeled("Width", unit: "inches"), height.labeled("Height", unit: "inches")),
+            twoColumnGrid(rotation.labeled("Rotation", unit: "degrees"), NSView())
         ])
         section.orientation = .vertical; section.alignment = .width; section.spacing = 8
         return section

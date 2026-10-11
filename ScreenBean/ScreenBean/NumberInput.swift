@@ -34,13 +34,24 @@ final class NumberInput: NSView {
 
     private var storedValue = 0.0
 
+    /// Measurements follow the fractions setting; other numbers, like angles, are always decimal.
+    var isMeasurement = true
+
+    private func text(for value: Double) -> String {
+        isMeasurement ? MeasurementFormat.string(value) : MeasurementFormat.decimalString(value)
+    }
+
+    private func parsed(_ text: String) -> Double? {
+        isMeasurement ? MeasurementFormat.parse(text) : Double(text.trimmingCharacters(in: .whitespaces))
+    }
+
     /// The exact value. The field may show it rounded to a 16th in fraction mode.
     var value: Double {
         get { storedValue }
         set {
             storedValue = newValue
             stepper.doubleValue = newValue
-            field.stringValue = MeasurementFormat.string(newValue)
+            field.stringValue = text(for: newValue)
         }
     }
 
@@ -86,13 +97,13 @@ final class NumberInput: NSView {
 
     @objc private func formatChanged() {
         updateStep()
-        if !field.stringValue.isEmpty { field.stringValue = MeasurementFormat.string(storedValue) }
+        if !field.stringValue.isEmpty { field.stringValue = text(for: storedValue) }
     }
 
     /// Applies a drag change, respecting the minimum. Fraction mode snaps to a 16th.
     func nudge(by delta: Double) {
         var next = value + delta
-        if MeasurementFormat.useFractions { next = MeasurementFormat.roundedToFraction(next) }
+        if isMeasurement && MeasurementFormat.useFractions { next = MeasurementFormat.roundedToFraction(next) }
         value = max(minimum, next)
         onChange?(value)
     }
@@ -100,13 +111,13 @@ final class NumberInput: NSView {
     @objc private func fieldChanged() {
         let text = field.stringValue
         // Leaving a field without typing keeps the exact value even if the field shows it rounded.
-        if text == MeasurementFormat.string(storedValue) { return }
-        guard let parsed = MeasurementFormat.parse(text) else {
+        if text == self.text(for: storedValue) { return }
+        guard let parsedValue = parsed(text) else {
             NSSound.beep()
-            field.stringValue = MeasurementFormat.string(storedValue)
+            field.stringValue = self.text(for: storedValue)
             return
         }
-        value = max(minimum, parsed)
+        value = max(minimum, parsedValue)
         onChange?(value)
     }
 

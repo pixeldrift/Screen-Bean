@@ -525,7 +525,7 @@ macOS has no public API for changing a display's rotation, so these edit Screen 
 * [x]	Position reference image
 * [x]	Scale reference image
 * [x]	Adjust reference transparency
-* [ ]	Rotate reference image
+* [x]	Rotate reference image and wallpaper
 * [x]	Lock reference image
 * [ ]	Four-corner perspective correction
 * [x]	Overlay windows on every display, so tools can draw outside the app window
@@ -548,8 +548,8 @@ macOS has no public API for changing a display's rotation, so these edit Screen 
 * [ ]	Physical-topology-based transitions
 * [x]	Snap to guides and to bezels while dragging (Option held turns snapping off)
 * [x]	Modifier keys: Shift constrains or unlinks, Option transforms from the opposite side or zooms from view center, Control flips snapping
-* [ ]	Multiple selection with Shift-click (displays and guides)
-* [ ]	Shift snaps rotation to fixed angle increments (with display rotation)
+* [x]	Multiple selection with Shift-click (displays and guides), moving together
+* [x]	Shift snaps rotation to 15 degree steps (images; displays follow if arbitrary display rotation is added)
 * [ ]	Snapping and modifier-key controls
 
 ### Phase 6 — Advanced Calibration

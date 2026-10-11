@@ -152,6 +152,8 @@ class DisplayArrangementView: NSView {
     private enum DragMode {
         case move
         case resize(GrabHandle)
+        /// Turning an image: the pointer's angle and the image's rotation when the drag began.
+        case rotate(startAngle: CGFloat, startRotation: CGFloat)
     }
 
     /// The eight dots around a selected or hovered item.
@@ -412,8 +414,17 @@ class DisplayArrangementView: NSView {
         let current = layer(slot)
         guard let image = current.image, let physical = physicalRect(of: current) else { return }
         let target = viewRect(forPhysical: physical)
+        let turn = CGFloat(current.frame?.rotation ?? 0)
         func drawImage(opacity: CGFloat) {
+            NSGraphicsContext.saveGraphicsState()
+            if turn != 0, let context = NSGraphicsContext.current?.cgContext {
+                // Turn the image about its own center.
+                context.translateBy(x: target.midX, y: target.midY)
+                context.rotate(by: turn * .pi / 180)
+                context.translateBy(x: -target.midX, y: -target.midY)
+            }
             image.draw(in: target, from: .zero, operation: .sourceOver, fraction: opacity, respectFlipped: true, hints: nil)
+            NSGraphicsContext.restoreGraphicsState()
         }
 
         if slot == .wallpaper && wallpaperClipsToDisplays {
@@ -728,7 +739,10 @@ class DisplayArrangementView: NSView {
         let current = layer(slot)
         guard current.blend.opacity > 0, let physical = physicalRect(of: current), (current.isLocked || selectedImage == slot) else { return nil }
         let rect = viewRect(forPhysical: physical)
-        return CGRect(x: rect.maxX - lockIconSize - 8, y: rect.maxY - lockIconSize - 8, width: lockIconSize, height: lockIconSize)
+        // The icon sits in the image's top-right corner and turns with it.
+        let corner = CGPoint(x: rect.maxX - lockIconSize / 2 - 8, y: rect.maxY - lockIconSize / 2 - 8)
+        let c = rotatedPoint(corner, about: CGPoint(x: rect.midX, y: rect.midY), degrees: CGFloat(current.frame?.rotation ?? 0))
+        return CGRect(x: c.x - lockIconSize / 2, y: c.y - lockIconSize / 2, width: lockIconSize, height: lockIconSize)
     }
 
     private func drawImageLockIcons(in context: CGContext) {
@@ -805,18 +819,42 @@ class DisplayArrangementView: NSView {
     }
 
     // MARK: - Grab Handles
-    private func handleCenter(_ handle: GrabHandle, in rect: CGRect) -> CGPoint {
-        CGPoint(x: rect.minX + handle.unit.x * rect.width, y: rect.minY + handle.unit.y * rect.height)
+    private func handleCenter(_ handle: GrabHandle, in rect: CGRect, rotation: CGFloat = 0) -> CGPoint {
+        let point = CGPoint(x: rect.minX + handle.unit.x * rect.width, y: rect.minY + handle.unit.y * rect.height)
+        return rotatedPoint(point, about: CGPoint(x: rect.midX, y: rect.midY), degrees: rotation)
     }
 
-    private func handle(at point: CGPoint, in rect: CGRect) -> GrabHandle? {
+    private func handle(at point: CGPoint, in rect: CGRect, rotation: CGFloat = 0) -> GrabHandle? {
         // Corners first so they win where an edge dot is close by.
         let ordered = GrabHandle.allCases.sorted { $0.isCorner && !$1.isCorner }
         return ordered.first { handle in
-            let c = handleCenter(handle, in: rect)
+            let c = handleCenter(handle, in: rect, rotation: rotation)
             let r = (handle.isCorner ? cornerHandleRadius : edgeHandleRadius) + 3
             return hypot(point.x - c.x, point.y - c.y) <= r
         }
+    }
+
+    // MARK: - Rotation Handle
+    private let rotationHandleDistance: CGFloat = 30
+
+    /// The knob above an image's top edge that turns it, with where its stem starts, in view coordinates.
+    private func rotationHandle(for target: EditTarget) -> (base: CGPoint, knob: CGPoint)? {
+        guard case .image = target, isEditable(target), let physical = physicalOuterRect(of: target) else { return nil }
+        let rect = viewRect(forPhysical: physical)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let angle = rotation(of: target)
+        return (
+            rotatedPoint(CGPoint(x: rect.midX, y: rect.maxY), about: center, degrees: angle),
+            rotatedPoint(CGPoint(x: rect.midX, y: rect.maxY + rotationHandleDistance), about: center, degrees: angle)
+        )
+    }
+
+    /// The image whose rotation knob is under `point`.
+    private func rotateHit(at point: CGPoint) -> EditTarget? {
+        for target in [currentSelection, hoverTarget].compactMap({ $0 }) {
+            if let knob = rotationHandle(for: target)?.knob, hypot(point.x - knob.x, point.y - knob.y) <= 9 { return target }
+        }
+        return nil
     }
 
     private func handleColor(for target: EditTarget) -> NSColor {
@@ -824,17 +862,36 @@ class DisplayArrangementView: NSView {
         return .controlAccentColor
     }
 
-    /// An outline in the item's color with dots at the corners and edge midpoints.
+    /// An outline in the item's color with dots at the corners and edge midpoints,
+    /// plus a rotation knob for images.
     private func drawHandles(for target: EditTarget, in context: CGContext) {
         guard isEditable(target), let physical = physicalOuterRect(of: target) else { return }
         let rect = viewRect(forPhysical: physical)
+        let angle = rotation(of: target)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
         let color = handleColor(for: target)
         context.saveGState()
         context.setStrokeColor(color.cgColor)
         context.setLineWidth(2)
-        context.stroke(rect)
+        // The outline follows the item's turn.
+        let corners = [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.maxY), CGPoint(x: rect.minX, y: rect.maxY)]
+            .map { rotatedPoint($0, about: center, degrees: angle) }
+        context.addLines(between: corners + [corners[0]])
+        context.strokePath()
+
+        if let knob = rotationHandle(for: target) {
+            context.setStrokeColor(color.cgColor)
+            context.move(to: knob.base); context.addLine(to: knob.knob)
+            context.strokePath()
+            let dot = CGRect(x: knob.knob.x - 6, y: knob.knob.y - 6, width: 12, height: 12)
+            context.setFillColor(NSColor.white.cgColor)
+            context.fillEllipse(in: dot)
+            context.setStrokeColor(color.cgColor)
+            context.setLineWidth(2)
+            context.strokeEllipse(in: dot)
+        }
         for handle in GrabHandle.allCases {
-            let c = handleCenter(handle, in: rect)
+            let c = handleCenter(handle, in: rect, rotation: angle)
             let r = handle.isCorner ? cornerHandleRadius : edgeHandleRadius
             let dot = CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)
             context.setFillColor(color.cgColor)
@@ -882,27 +939,32 @@ class DisplayArrangementView: NSView {
     }
 
     // MARK: - Hit Testing
+    /// Whether `point` is inside an item's body, allowing for the item's turn and some `slop`.
+    private func body(of target: EditTarget, contains point: CGPoint, slop: CGFloat = 0) -> Bool {
+        guard let physical = physicalOuterRect(of: target) else { return false }
+        let rect = viewRect(forPhysical: physical)
+        let local = rotatedPoint(point, about: CGPoint(x: rect.midX, y: rect.midY), degrees: -rotation(of: target))
+        return rect.insetBy(dx: -slop, dy: -slop).contains(local)
+    }
+
     /// What is under `point`: a handle of the selected or hovered item, or an item's body.
     private func itemHit(_ point: CGPoint) -> (target: EditTarget, handle: GrabHandle?)? {
         for target in [currentSelection, hoverTarget].compactMap({ $0 }) where isEditable(target) {
-            if let physical = physicalOuterRect(of: target), let handle = handle(at: point, in: viewRect(forPhysical: physical)) {
+            if let physical = physicalOuterRect(of: target),
+               let handle = handle(at: point, in: viewRect(forPhysical: physical), rotation: rotation(of: target)) {
                 return (target, handle)
             }
         }
-        for target in targetsFrontToBack() {
-            if let physical = physicalOuterRect(of: target), viewRect(forPhysical: physical).contains(point) { return (target, nil) }
-        }
+        for target in targetsFrontToBack() where body(of: target, contains: point) { return (target, nil) }
         return nil
     }
 
     /// Like `itemHit`, but forgiving enough to keep handles that hang outside an item's edge visible.
     private func hoverTest(_ point: CGPoint) -> EditTarget? {
+        if let target = rotateHit(at: point) { return target }
         if let hit = itemHit(point) { return hit.target }
         let slop = cornerHandleRadius + 3
-        return targetsFrontToBack().first { target in
-            guard isEditable(target), let physical = physicalOuterRect(of: target) else { return false }
-            return viewRect(forPhysical: physical).insetBy(dx: -slop, dy: -slop).contains(point)
-        }
+        return targetsFrontToBack().first { isEditable($0) && body(of: $0, contains: point, slop: slop) }
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -959,12 +1021,24 @@ class DisplayArrangementView: NSView {
         if let axis = rulerAxis(at: point) { return guideCursor(axis) }
         if let guide = customGuide(at: point) { return guideCursor(guide.axis) }
         if let gap = gapMeasurement(at: point) { return gapCursor(gap.measurement, zone: gap.zone) }
+        if rotateHit(at: point) != nil { return ToolCursors.rotate }
         if let hit = itemHit(point), let handle = hit.handle { return resizeCursor(handle, rotation: rotation(of: hit.target)) }
         return .arrow
     }
 
-    /// How far an item is turned, in degrees. Displays aren't.
-    private func rotation(of target: EditTarget) -> CGFloat { 0 }
+    /// How far an item is turned, in degrees counterclockwise. Displays aren't.
+    private func rotation(of target: EditTarget) -> CGFloat {
+        if case .image(let slot) = target { return CGFloat(layer(slot).frame?.rotation ?? 0) }
+        return 0
+    }
+
+    /// `p` turned counterclockwise by `degrees` about `center`.
+    private func rotatedPoint(_ p: CGPoint, about center: CGPoint, degrees: CGFloat) -> CGPoint {
+        guard degrees != 0 else { return p }
+        let radians = degrees * .pi / 180
+        let dx = p.x - center.x, dy = p.y - center.y
+        return CGPoint(x: center.x + dx * cos(radians) - dy * sin(radians), y: center.y + dx * sin(radians) + dy * cos(radians))
+    }
 
     override func mouseExited(with event: NSEvent) {
         if hoverTarget != nil { hoverTarget = nil; needsDisplay = true }
@@ -1553,16 +1627,19 @@ class DisplayArrangementView: NSView {
 
     /// The fixed point of a resize, with arrows in the directions the item will grow or shrink:
     /// both ways around the center by default, or toward the handle from the opposite corner with Option.
-    private func drawAnchorIndicator(rect physical: CGRect, handle: GrabHandle, fromCenter: Bool) {
+    private func drawAnchorIndicator(rect physical: CGRect, handle: GrabHandle, fromCenter: Bool, rotation turn: CGFloat = 0) {
         let u = handle.unit
-        let anchor = fromCenter
+        let localAnchor = fromCenter
             ? CGPoint(x: physical.midX, y: physical.midY)
             : CGPoint(x: physical.minX + (1 - u.x) * physical.width, y: physical.minY + (1 - u.y) * physical.height)
+        let anchor = rotatedPoint(localAnchor, about: CGPoint(x: physical.midX, y: physical.midY), degrees: turn)
         let center = CGPoint(x: anchor.x * pointsPerInch + viewOffset.x, y: anchor.y * pointsPerInch + viewOffset.y)
 
         var directions: [CGPoint] = []
         if u.x != 0.5 { directions += fromCenter ? [CGPoint(x: 1, y: 0), CGPoint(x: -1, y: 0)] : [CGPoint(x: u.x == 1 ? 1 : -1, y: 0)] }
         if u.y != 0.5 { directions += fromCenter ? [CGPoint(x: 0, y: 1), CGPoint(x: 0, y: -1)] : [CGPoint(x: 0, y: u.y == 1 ? 1 : -1)] }
+        // The arrows turn with the item.
+        directions = directions.map { rotatedPoint($0, about: .zero, degrees: turn) }
 
         let arrows = NSBezierPath()
         arrows.lineCapStyle = .round
@@ -1597,9 +1674,9 @@ class DisplayArrangementView: NSView {
     /// Shows the anchor while resizing, or while hovering a handle (following the modifier keys held).
     private func drawAnchorIfNeeded() {
         if dragTarget != nil, case .resize(let handle) = dragMode {
-            drawAnchorIndicator(rect: dragStartRect, handle: handle, fromCenter: !lastModifiers.contains(.option))
+            drawAnchorIndicator(rect: dragStartRect, handle: handle, fromCenter: !lastModifiers.contains(.option), rotation: dragTarget.map { rotation(of: $0) } ?? 0)
         } else if dragTarget == nil, let hoverHandle, let target = hoverTarget ?? currentSelection, let rect = physicalOuterRect(of: target) {
-            drawAnchorIndicator(rect: rect, handle: hoverHandle, fromCenter: !NSEvent.modifierFlags.contains(.option))
+            drawAnchorIndicator(rect: rect, handle: hoverHandle, fromCenter: !NSEvent.modifierFlags.contains(.option), rotation: rotation(of: target))
         }
     }
 
@@ -1685,7 +1762,7 @@ class DisplayArrangementView: NSView {
         for info in displays {
             guard let placed = physicalLayout.displays.first(where: { $0.id == info.displayID }),
                   let rendered = WallpaperSlicer.render(
-                    image: cgImage, imageRect: imageRect,
+                    image: cgImage, imageRect: imageRect, rotationDegrees: wallpaperLayer.frame?.rotation ?? 0,
                     panelRect: CGRect(x: placed.x, y: placed.y, width: placed.width, height: placed.height),
                     pixelWidth: info.pixelWidth, pixelHeight: info.pixelHeight
                   ) else { continue }
@@ -1854,6 +1931,19 @@ class DisplayArrangementView: NSView {
             return
         }
 
+        // The knob above a selected image turns it.
+        if let target = rotateHit(at: point), case .image = target, let start = physicalOuterRect(of: target) {
+            select(target)
+            isPanning = false
+            dragTarget = target
+            dragStartPoint = point
+            dragStartRect = start
+            let center = viewRect(forPhysical: start)
+            dragMode = .rotate(startAngle: atan2(point.y - center.midY, point.x - center.midX), startRotation: rotation(of: target))
+            pushCursor(ToolCursors.rotate)
+            return
+        }
+
         // Clicking an item selects it and starts moving it, or resizing it from a handle.
         // Shift adds a display to the selection or removes it. Clicking empty workspace
         // clears the selection and begins panning.
@@ -1927,6 +2017,16 @@ class DisplayArrangementView: NSView {
         if let dragTarget {
             let flags = event.modifierFlags
             lastModifiers = flags
+            if case .rotate(let startAngle, let startRotation) = dragMode, case .image(let slot) = dragTarget {
+                let center = viewRect(forPhysical: dragStartRect)
+                let angle = atan2(currentPoint.y - center.midY, currentPoint.x - center.midX)
+                var degrees = Double(startRotation + (angle - startAngle) * 180 / .pi)
+                // Shift snaps to 15 degree steps.
+                if flags.contains(.shift) { degrees = (degrees / 15).rounded() * 15 }
+                setImageRotation(ImageFrame.normalized(degrees), for: slot)
+                didDrag = true
+                return
+            }
             // Control turns snapping the other way for as long as it is held.
             let invert = flags.contains(.control)
             let snapGuides = GuideSettings.snapToGuides != invert
@@ -1939,6 +2039,8 @@ class DisplayArrangementView: NSView {
                 // Shift keeps the move to one direction.
                 if flags.contains(.shift) { if abs(dx) > abs(dy) { dy = 0 } else { dx = 0 } }
                 rect = snappedMove(dragStartRect.offsetBy(dx: dx, dy: dy), target: dragTarget, guides: snapGuides, bezels: snapBezels)
+            case .rotate:
+                return
             case .resize(let handle):
                 var minSize = CGSize(width: minimumItemSize, height: minimumItemSize)
                 var isImage = false
@@ -1952,8 +2054,24 @@ class DisplayArrangementView: NSView {
                 let keepAspect = isImage || !flags.contains(.shift)
                 // Scaling is around the center by default; Option anchors the opposite corner or edge instead.
                 let fromCenter = !flags.contains(.option)
-                let pointer = snappedPointer(viewToPhysical(currentPoint), handle: handle, target: dragTarget, guides: snapGuides, bezels: snapBezels)
-                rect = resizedRect(dragStartRect, handle: handle, to: pointer, keepAspect: keepAspect, fromCenter: fromCenter, minSize: minSize)
+                let turn = rotation(of: dragTarget)
+                if turn == 0 {
+                    let pointer = snappedPointer(viewToPhysical(currentPoint), handle: handle, target: dragTarget, guides: snapGuides, bezels: snapBezels)
+                    rect = resizedRect(dragStartRect, handle: handle, to: pointer, keepAspect: keepAspect, fromCenter: fromCenter, minSize: minSize)
+                } else {
+                    // A turned image is resized in its own frame, then moved so a fixed corner stays where it was.
+                    let start = CGPoint(x: dragStartRect.midX, y: dragStartRect.midY)
+                    let local = rotatedPoint(viewToPhysical(currentPoint), about: start, degrees: -turn)
+                    var resized = resizedRect(dragStartRect, handle: handle, to: local, keepAspect: true, fromCenter: fromCenter, minSize: minSize)
+                    if !fromCenter {
+                        let u = handle.unit
+                        let anchor = CGPoint(x: dragStartRect.minX + (1 - u.x) * dragStartRect.width, y: dragStartRect.minY + (1 - u.y) * dragStartRect.height)
+                        let before = rotatedPoint(anchor, about: start, degrees: turn)
+                        let after = rotatedPoint(anchor, about: CGPoint(x: resized.midX, y: resized.midY), degrees: turn)
+                        resized = resized.offsetBy(dx: before.x - after.x, dy: before.y - after.y)
+                    }
+                    rect = resized
+                }
             }
             apply(rect, to: dragTarget)
             // Moving one selected display moves the whole selection.
@@ -1992,10 +2110,17 @@ class DisplayArrangementView: NSView {
     }
 
     /// Moves or resizes an item so its footprint (including bezel for displays) is `rect`.
+    private func setImageRotation(_ degrees: Double, for slot: ImageLayerSlot) {
+        guard var frame = layer(slot).frame else { return }
+        frame.rotation = degrees
+        setFrame(frame, for: slot)
+        onImageFrameChanged?(slot, frame)
+    }
+
     private func apply(_ rect: CGRect, to target: EditTarget) {
         switch target {
         case .image(let slot):
-            let frame = ImageFrame(centerX: Double(rect.midX), centerY: Double(rect.midY), width: Double(rect.width))
+            let frame = ImageFrame(centerX: Double(rect.midX), centerY: Double(rect.midY), width: Double(rect.width), rotation: layer(slot).frame?.rotation ?? 0)
             setFrame(frame, for: slot)
             onImageFrameChanged?(slot, frame)
         case .display(let id):
