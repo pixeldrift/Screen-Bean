@@ -85,6 +85,11 @@ class DisplayArrangementView: NSView {
     private var panStartPoint = CGPoint.zero
     private var panStartOffset = CGPoint.zero
     private var isPanning = false
+    /// Shift-dragging the background zooms around the point where the drag began.
+    private var isZoomDragging = false
+    private var zoomDragStart = CGPoint.zero
+    private var zoomDragStartZoom: CGFloat = 1
+    private var zoomDragAnchor = CGPoint.zero
     // Selection, hover and drag state for displays and the reference image.
     private var selectedImage: ImageLayerSlot?
     private var hoverTarget: EditTarget?
@@ -950,6 +955,15 @@ class DisplayArrangementView: NSView {
             return
         }
 
+        // Shift-drag on the background zooms, keeping the selection.
+        if event.modifierFlags.contains(.shift) {
+            isZoomDragging = true
+            zoomDragStart = point
+            zoomDragStartZoom = zoom
+            zoomDragAnchor = viewToPhysical(point)
+            return
+        }
+
         select(nil)
         panStartPoint = point
         panStartOffset = viewOffset
@@ -978,6 +992,18 @@ class DisplayArrangementView: NSView {
                 rect = resizedRect(dragStartRect, handle: handle, to: viewToPhysical(currentPoint), keepAspect: { if case .image = dragTarget { return true } else { return false } }(), minSize: minSize)
             }
             apply(rect, to: dragTarget)
+            return
+        }
+
+        if isZoomDragging {
+            // Dragging up zooms in, down zooms out; the point under the cursor at the start stays put.
+            let newZoom = min(max(zoomDragStartZoom * exp((currentPoint.y - zoomDragStart.y) * 0.01), 0.05), 10)
+            zoom = newZoom
+            viewOffset = CGPoint(
+                x: zoomDragStart.x - zoomDragAnchor.x * pointsPerInch,
+                y: zoomDragStart.y - zoomDragAnchor.y * pointsPerInch
+            )
+            needsDisplay = true
             return
         }
 
@@ -1024,6 +1050,7 @@ class DisplayArrangementView: NSView {
         with event: NSEvent
     ) {
         isPanning = false
+        isZoomDragging = false
         if case .display? = dragTarget {
             syncSelectedLayoutToDisplay(save: true)
         }
@@ -1081,18 +1108,23 @@ class DisplayArrangementView: NSView {
     }
 
     // MARK: - Scroll Zoom
+    /// Sets the zoom, keeping the physical point under `anchor` (in view coordinates) where it is.
+    private func setZoom(_ newZoom: CGFloat, keeping anchor: CGPoint) {
+        let physical = viewToPhysical(anchor)
+        zoom = min(max(newZoom, 0.05), 10.0)
+        viewOffset = CGPoint(
+            x: anchor.x - physical.x * pointsPerInch,
+            y: anchor.y - physical.y * pointsPerInch
+        )
+        needsDisplay = true
+    }
+
     override func scrollWheel(
         with event: NSEvent
     ) {
-        let zoomAmount =
-            1.0 +
-            CGFloat(event.scrollingDeltaY) *
-            0.01
-        zoom *= zoomAmount
-        zoom = min(
-            max(zoom, 0.05),
-            10.0
-        )
-        needsDisplay = true
+        // Zoom around the cursor, or around the middle of the viewport if the cursor is outside it.
+        let location = convert(event.locationInWindow, from: nil)
+        let anchor = bounds.contains(location) ? location : CGPoint(x: bounds.midX, y: bounds.midY)
+        setZoom(zoom * exp(CGFloat(event.scrollingDeltaY) * 0.01), keeping: anchor)
     }
 }
