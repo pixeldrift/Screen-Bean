@@ -451,6 +451,14 @@ Provides persistent storage for display configurations using UserDefaults and Co
 
 This allows Screen Bean to restore display-specific configuration between launches.
 
+#### DisplayArrangementView
+
+The interactive workspace. Draws the grid and displays from the `PhysicalLayout`, and handles pan, zoom, selection and dragging.
+
+#### DisplayInspectorView
+
+The sidebar for editing the selected display: nickname, physical size, position, color and bezels.
+
 ---
 
 ## Development Roadmap
@@ -496,11 +504,11 @@ This allows Screen Bean to restore display-specific configuration between launch
 
 ### Phase 3 — Visual Calibration
 
-* [ ]	Import reference image
-* [ ]	Position reference image
-* [ ]	Scale reference image
+* [x]	Import reference image
+* [x]	Position reference image
+* [x]	Scale reference image
 * [ ]	Rotate reference image
-* [ ]	Adjust reference transparency
+* [x]	Adjust reference transparency
 * [ ]	Lock reference image
 * [ ]	Four-corner perspective correction
 * [ ]	Image warping
@@ -512,7 +520,7 @@ This allows Screen Bean to restore display-specific configuration between launch
 
 ### Phase 4 — Unified Wallpaper
 
-* [ ]	Import wallpaper
+* [x]	Import wallpaper
 * [ ]	Create unified physical canvas
 * [ ]	Position and scale wallpaper
 * [ ]	Preview wallpaper across displays
@@ -554,14 +562,6 @@ This allows Screen Bean to restore display-specific configuration between launch
 * [ ]	Measurement annotations
 * [ ]	Calibration reports
 * [ ]	Reusable layout templates
-
-#### DisplayArrangementView
-
-The interactive workspace. Draws the grid and displays from the `PhysicalLayout`, and handles pan, zoom, selection and dragging.
-
-#### DisplayInspectorView
-
-The sidebar for editing the selected display: nickname, physical size, position, color and bezels.
 
 ### Backlog — Low Priority
 

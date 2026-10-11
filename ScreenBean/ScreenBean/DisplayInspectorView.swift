@@ -109,7 +109,10 @@ final class DisplayInspectorView: NSView {
         let cross = NSStackView(views: [sideCell("Top", top), middle, sideCell("Bottom", bottom)])
         cross.orientation = .vertical; cross.alignment = .centerX; cross.spacing = 6
         individualSection = cross
-        let bezelSection = stack([sectionTitle("Bezel"), sizeHeader, bezel, uniformSection, individualSection, colorRow("Bezel Color", bezelColor), showBezel], spacing: 8)
+        bezel.widthAnchor.constraint(equalToConstant: columnWidth).isActive = true
+        let bezelRow = NSStackView(views: [bezel, NSView()])
+        bezelRow.distribution = .fill
+        let bezelSection = stack([sectionTitle("Bezel"), sizeHeader, bezelRow, uniformSection, individualSection, colorRow("Bezel Color", bezelColor), showBezel], spacing: 8)
         let appearance = section("Appearance", [colorRow("Display Color", displayColor)])
 
         let content = stack([header, stack([nickname, detected], spacing: 4), infoSection, divider(), dimensions, divider(), bezelSection, divider(), appearance], spacing: 12)
@@ -195,7 +198,7 @@ final class DisplayInspectorView: NSView {
         bezel.value = b; slider.doubleValue = b
         top.value = d.bezelTop; bottom.value = d.bezelBottom
         left.value = d.bezelLeft; right.value = d.bezelRight
-        bezel.isHidden = !d.uniformBezel; uniformSection.isHidden = !d.uniformBezel; individualSection.isHidden = d.uniformBezel
+        bezel.superview?.isHidden = !d.uniformBezel; uniformSection.isHidden = !d.uniformBezel; individualSection.isHidden = d.uniformBezel
         displayColor.setColor(NSColor(displayHex: d.colorHex))
         bezelColor.setColor(NSColor(displayHex: d.bezelColorHex))
         showBezel.state = d.showBezel ? .on : .off
