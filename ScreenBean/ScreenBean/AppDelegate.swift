@@ -46,6 +46,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
         editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
         editMenuItem.submenu = editMenu
+        // Layout: planned displays, and later saved layouts.
+        let layoutMenuItem = NSMenuItem()
+        mainMenu.addItem(layoutMenuItem)
+        let layoutMenu = NSMenu(title: "Layout")
+        let addVirtualItem = NSMenuItem(title: "Add Virtual Display…", action: #selector(addVirtualDisplay), keyEquivalent: "n")
+        addVirtualItem.keyEquivalentModifierMask = [.command, .shift]
+        addVirtualItem.target = self
+        layoutMenu.addItem(addVirtualItem)
+        let deleteVirtualItem = NSMenuItem(title: "Delete Virtual Display", action: #selector(deleteVirtualDisplay), keyEquivalent: "")
+        deleteVirtualItem.target = self
+        layoutMenu.addItem(deleteVirtualItem)
+        layoutMenuItem.submenu = layoutMenu
         let viewMenuItem = NSMenuItem()
         mainMenu.addItem(viewMenuItem)
         let viewMenu = NSMenu(title: "View")
@@ -137,8 +149,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         inspector.onChange = { [weak mainView] edit in mainView?.updateSelectedDisplay(edit) }
+        inspector.onAssignVirtual = { [weak mainView] id in mainView?.assignSelectedVirtualDisplay(to: id) }
+        inspector.onDeleteVirtual = { [weak mainView] in mainView?.deleteSelectedVirtualDisplays() }
         mainView.onSelectionChanged = { [weak mainView, weak sidebar] display in
             sidebar?.setDisplaySelected(display != nil)
+            sidebar?.inspector.connectedDisplays = (mainView?.connectedDisplays ?? []).map { (id: $0.displayID, name: $0.nickname) }
             let position = mainView?.selectedPosition()
             sidebar?.inspector.refresh(display, x: position?.x ?? 0, y: position?.y ?? 0)
             self.refreshOverlays()
@@ -153,7 +168,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let fitButton = NSButton(title: "Zoom to Fit", target: mainView, action: #selector(DisplayArrangementView.zoomToFitFromButton))
         centerButton.bezelStyle = .rounded
         fitButton.bezelStyle = .rounded
-        let buttonStack = NSStackView(views: [centerButton, fitButton])
+        let addVirtualButton = NSButton(title: "Add Virtual Display…", target: self, action: #selector(addVirtualDisplay))
+        addVirtualButton.bezelStyle = .rounded
+        let buttonStack = NSStackView(views: [centerButton, fitButton, addVirtualButton])
         buttonStack.orientation = .horizontal
         buttonStack.spacing = 8
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
@@ -224,6 +241,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Re-reads the displays from macOS, e.g. after changing orientation in System Settings.
     @objc private func refreshDisplays() {
         mainView?.reloadDisplays()
+        refreshOverlays()
+    }
+
+    // MARK: - Virtual Displays
+
+    @objc private func addVirtualDisplay() {
+        guard let spec = VirtualDisplayPrompt.run() else { return }
+        mainView?.addVirtualDisplay(name: spec.name, widthInches: spec.widthInches, heightInches: spec.heightInches, pixelWidth: spec.pixelWidth, pixelHeight: spec.pixelHeight)
+        refreshOverlays()
+    }
+
+    @objc private func deleteVirtualDisplay() {
+        mainView?.deleteSelectedVirtualDisplays()
         refreshOverlays()
     }
 
@@ -336,6 +366,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         if item.action == #selector(toggleGapMeasurements) { item.state = GuideSettings.showGapMeasurements ? .on : .off }
         if item.action == #selector(toggleGuides) { item.state = GuideSettings.showEdgeGuides && GuideSettings.showCustomGuides ? .on : .off }
+        if item.action == #selector(deleteVirtualDisplay) { return mainView?.canDeleteSelectedVirtualDisplays ?? false }
         if item.action == #selector(clearGuides) { return !GuideStore.shared.guides.isEmpty }
         if item.action == #selector(toggleFractions) {
             item.state = MeasurementFormat.useFractions ? .on : .off
@@ -428,6 +459,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         var applied = 0
         var failures: [String] = []
         for slice in export.slices {
+            // A virtual display has no screen to set a wallpaper on.
+            if slice.isVirtual { continue }
             guard let screen = NSScreen.screens.first(where: { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == slice.displayID }) else {
                 failures.append("\(slice.name): not currently active (for example, mirrored)")
                 continue

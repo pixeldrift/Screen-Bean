@@ -16,6 +16,8 @@ struct WallpaperSlice {
     let pixelWidth: Int
     let pixelHeight: Int
     let image: CGImage
+    /// True for a planned display, which has no screen to apply to.
+    var isVirtual = false
 }
 
 /// Everything needed to export or apply the wallpaper.

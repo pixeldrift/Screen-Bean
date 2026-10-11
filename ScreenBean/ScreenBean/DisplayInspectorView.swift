@@ -16,6 +16,11 @@ enum SidebarMetrics {
 
 final class DisplayInspectorView: NSView {
     var onChange: ((DisplayEdit) -> Void)?
+    /// Asks to move a virtual display's place and settings onto a connected display.
+    var onAssignVirtual: ((CGDirectDisplayID) -> Void)?
+    var onDeleteVirtual: (() -> Void)?
+    /// The connected displays a virtual display could be assigned to.
+    var connectedDisplays: [(id: CGDirectDisplayID, name: String)] = []
 
     private let nickname = NSTextField(string: "")
     private let detected = NSTextField(labelWithString: "")
@@ -39,6 +44,9 @@ final class DisplayInspectorView: NSView {
     private let ppi = NSTextField(labelWithString: "—")
     private let role = NSTextField(labelWithString: "—")
     private let orientation = NSTextField(labelWithString: "—")
+    private let assignMenu = NSPopUpButton(title: "", target: nil, action: nil)
+    private let deleteVirtualButton = NSButton(title: "Delete Virtual Display", target: nil, action: nil)
+    private var virtualSection: NSView!
     private var isLocked = false
     private var hasDisplay = false
     private var uniformSection: NSView!
@@ -135,7 +143,17 @@ final class DisplayInspectorView: NSView {
         let bezelSection = stack([sectionTitle("Bezel"), sizeHeader, bezelRow, uniformSection, individualSection, colorRow("Bezel Color", bezelColor), showBezel], spacing: 8)
         let appearance = section("Appearance", [colorRow("Display Color", displayColor)])
 
-        let content = stack([header, stack([nickname, detected], spacing: 4), infoSection, divider(), dimensions, divider(), bezelSection, divider(), appearance], spacing: 12)
+        // Only a virtual display shows this: it can be handed to a connected display, or deleted.
+        assignMenu.pullsDown = true
+        assignMenu.target = self; assignMenu.action = #selector(assignChosen)
+        deleteVirtualButton.bezelStyle = .rounded
+        deleteVirtualButton.target = self; deleteVirtualButton.action = #selector(deleteVirtualTapped)
+        let virtualNote = NSTextField(wrappingLabelWithString: "Not connected. Assign it to a connected display to move this place, size and look onto it.")
+        virtualNote.font = .systemFont(ofSize: 11); virtualNote.textColor = .secondaryLabelColor
+        virtualSection = stack([divider(), section("Virtual Display", [virtualNote, assignMenu, deleteVirtualButton])], spacing: 12)
+        virtualSection.isHidden = true
+
+        let content = stack([header, stack([nickname, detected], spacing: 4), infoSection, divider(), dimensions, divider(), bezelSection, divider(), appearance, virtualSection], spacing: 12)
         content.translatesAutoresizingMaskIntoConstraints = false
 
         let document = FlippedView()
@@ -208,6 +226,7 @@ final class DisplayInspectorView: NSView {
     func refresh(_ d: DisplayInfo?, x px: CGFloat, y py: CGFloat) {
         guard let d else {
             hasDisplay = false
+            virtualSection.isHidden = true
             nickname.stringValue = ""; detected.stringValue = ""
             for input in [width, height, x, y, bezel, top, bottom, left, right] { input.clear() }
             resolution.stringValue = "—"; ppi.stringValue = "—"; role.stringValue = "—"; orientation.stringValue = "—"
@@ -218,7 +237,7 @@ final class DisplayInspectorView: NSView {
         hasDisplay = true
         isLocked = d.isLocked
         if nickname.currentEditor() == nil { nickname.stringValue = d.nickname }
-        detected.stringValue = "(" + DisplayInfo.displayName(for: d.displayID) + ")"
+        detected.stringValue = d.isVirtual ? "(virtual display)" : "(" + DisplayInfo.displayName(for: d.displayID) + ")"
         width.value = d.physicalWidthInches; height.value = d.physicalHeightInches
         x.value = Double(px); y.value = Double(py)
         uniform.state = d.uniformBezel ? .on : .off
@@ -230,7 +249,9 @@ final class DisplayInspectorView: NSView {
         bezelColor.setColor(NSColor(displayHex: d.bezelColorHex))
         showBezel.state = d.showBezel ? .on : .off
         resolution.stringValue = "\(d.pixelWidth) × \(d.pixelHeight) pixels"; ppi.stringValue = String(format: "%.0f PPI", d.ppi)
-        role.stringValue = d.isPrimary ? "Primary display" : "Secondary display"
+        role.stringValue = d.isVirtual ? "Virtual display" : (d.isPrimary ? "Primary display" : "Secondary display")
+        virtualSection.isHidden = !d.isVirtual
+        if d.isVirtual { rebuildAssignMenu() }
         orientation.stringValue = d.isPortrait ? "Portrait (rotated \(d.rotationDegrees)°)" : (d.rotationDegrees == 0 ? "Landscape" : "Landscape (rotated \(d.rotationDegrees)°)")
         if d.mirrorsDisplayID != 0 { role.stringValue += ", mirroring \(DisplayInfo.displayName(for: d.mirrorsDisplayID))" }
         updateLockButton(); applyEnabled()
@@ -249,6 +270,8 @@ final class DisplayInspectorView: NSView {
         showBezel.isEnabled = editable && !overridden
         showBezel.toolTip = overridden ? "All bezels are currently forced \(BezelVisibility.current == .showAll ? "on" : "off") in Settings." : nil
         lockButton.isEnabled = hasDisplay
+        deleteVirtualButton.isEnabled = editable
+        assignMenu.isEnabled = editable && !connectedDisplays.isEmpty
     }
 
     private func updateLockButton() {
@@ -260,6 +283,21 @@ final class DisplayInspectorView: NSView {
 
     // MARK: - Actions
 
+    private func rebuildAssignMenu() {
+        assignMenu.removeAllItems()
+        assignMenu.addItem(withTitle: connectedDisplays.isEmpty ? "No connected displays" : "Assign to Connected Display…")
+        for display in connectedDisplays {
+            let item = NSMenuItem(title: display.name, action: nil, keyEquivalent: "")
+            item.tag = Int(display.id)
+            assignMenu.menu?.addItem(item)
+        }
+        assignMenu.isEnabled = hasDisplay && !isLocked && !connectedDisplays.isEmpty
+    }
+    @objc private func assignChosen() {
+        guard let item = assignMenu.selectedItem, item.tag != 0 else { return }
+        onAssignVirtual?(CGDirectDisplayID(item.tag))
+    }
+    @objc private func deleteVirtualTapped() { onDeleteVirtual?() }
     private func emit(_ edit: DisplayEdit) { onChange?(edit) }
     @objc private func lockToggled() { emit(DisplayEdit(isLocked: !isLocked)) }
     @objc private func nameChanged() { emit(DisplayEdit(nickname: nickname.stringValue)) }

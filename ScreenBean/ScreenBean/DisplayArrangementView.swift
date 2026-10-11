@@ -302,7 +302,7 @@ class DisplayArrangementView: NSView {
                 uniformBezel: display.uniformBezel,
                 bezelUniform: CGFloat(display.bezelUniform), bezelTop: CGFloat(display.bezelTop), bezelBottom: CGFloat(display.bezelBottom),
                 bezelLeft: CGFloat(display.bezelLeft), bezelRight: CGFloat(display.bezelRight),
-                bezelColorHex: display.bezelColorHex, showBezel: display.showBezel, isLocked: display.isLocked,
+                bezelColorHex: display.bezelColorHex, showBezel: display.showBezel, isLocked: display.isLocked, isVirtual: display.isVirtual,
                 x: originX,
                 y: originY,
                 width: physicalWidth, height: physicalHeight
@@ -639,6 +639,7 @@ class DisplayArrangementView: NSView {
         drawBevel(in: context, rect: rect, raised: false, width: 2)
 
         drawLockIcon(for: display, in: rect, isSelected: isSelected)
+        drawConnectionBadge(for: display, in: rect)
 
         drawIdentity(of: display, label: label, in: rect)
     }
@@ -720,6 +721,23 @@ class DisplayArrangementView: NSView {
     /// Clickable area of the lock icon in the display's top-right corner.
     private func lockIconRect(in rect: CGRect) -> CGRect {
         CGRect(x: rect.maxX - lockIconSize - 8, y: rect.maxY - lockIconSize - 8, width: lockIconSize, height: lockIconSize)
+    }
+
+    /// A small icon in the top-left corner: a display for a connected one, a dashed square for a virtual one.
+    /// A virtual display's panel also gets a dashed outline, so it reads as planned.
+    private func drawConnectionBadge(for display: PhysicalLayout.Display, in rect: CGRect) {
+        let name = display.isVirtual ? "square.dashed" : "display"
+        let icon = CGRect(x: rect.minX + 8, y: rect.maxY - lockIconSize - 8, width: lockIconSize, height: lockIconSize)
+        if let symbol = NSImage(systemSymbolName: name, accessibilityDescription: display.isVirtual ? "Virtual display" : "Connected display")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [NSColor.white.withAlphaComponent(0.55)])) {
+            symbol.draw(in: icon)
+        }
+        guard display.isVirtual else { return }
+        let outline = NSBezierPath(rect: rect.insetBy(dx: 3, dy: 3))
+        outline.lineWidth = 1.5
+        outline.setLineDash([6, 4], count: 2, phase: 0)
+        NSColor.white.withAlphaComponent(0.6).setStroke()
+        outline.stroke()
     }
 
     /// Locked displays always show the lock; unlocked ones show it while selected.
@@ -1061,6 +1079,8 @@ class DisplayArrangementView: NSView {
             UndoCenter.shared.perform(doomed.count > 1 ? "Delete Guides" : "Delete Guide") { for id in doomed { GuideStore.shared.remove(id) } }
             selectedGuideIDs = []
             hoverGuideID = nil
+        } else if event.keyCode == 51 || event.keyCode == 117, selectedDisplays.contains(where: \.isVirtual) {
+            deleteSelectedVirtualDisplays()
         } else {
             super.keyDown(with: event)
         }
@@ -1552,6 +1572,8 @@ class DisplayArrangementView: NSView {
                 onImageLockChanged?(slot, state.isLocked)
             }
         }
+        // Undoing the adding or deleting of a virtual display changes which ones exist.
+        VirtualDisplayStore.shared.ids = displays.filter(\.isVirtual).map(\.persistentID)
         for display in displays { syncLayoutToDisplay(id: display.displayID, save: true) }
         selectedDisplayIDs = selectedDisplayIDs.filter { id in displays.contains(where: { $0.displayID == id }) }
         selectedGuideIDs = selectedGuideIDs.filter { id in GuideStore.shared.guide(withID: id) != nil }
@@ -1851,10 +1873,70 @@ class DisplayArrangementView: NSView {
                     pixelWidth: Int((Double(info.pixelWidth) * previewScale(info.pixelWidth, maxPixelWidth)).rounded()),
                     pixelHeight: Int((Double(info.pixelHeight) * previewScale(info.pixelWidth, maxPixelWidth)).rounded())
                   ) else { continue }
-            slices.append(WallpaperSlice(displayID: info.displayID, persistentID: info.persistentID, name: info.nickname, pixelWidth: info.pixelWidth, pixelHeight: info.pixelHeight, image: rendered))
+            slices.append(WallpaperSlice(displayID: info.displayID, persistentID: info.persistentID, name: info.nickname, pixelWidth: info.pixelWidth, pixelHeight: info.pixelHeight, image: rendered, isVirtual: info.isVirtual))
             neededPPI = max(neededPPI, Double(info.pixelWidth) / max(Double(placed.width), 0.01))
         }
         return WallpaperExport(slices: slices, imagePixelsPerInch: Double(cgImage.width) / Double(imageRect.width), neededPixelsPerInch: neededPPI)
+    }
+
+    // MARK: - Virtual Displays
+    private var selectedDisplays: [DisplayInfo] { displays.filter { selectedDisplayIDs.contains($0.displayID) } }
+
+    /// The connected displays, which a virtual display can be assigned to.
+    var connectedDisplays: [DisplayInfo] { displays.filter { !$0.isVirtual } }
+
+    /// Adds a planned display to the right of the arrangement and selects it.
+    func addVirtualDisplay(name: String, widthInches: Double, heightInches: Double, pixelWidth: Int, pixelHeight: Int) {
+        let persistentID = VirtualDisplayStore.newPersistentID()
+        let gap = 1.5
+        let x = physicalLayout.displays.isEmpty ? -widthInches / 2 : Double(physicalLayout.maxX) + gap
+        let y = physicalLayout.displays.isEmpty ? -heightInches / 2 : Double(physicalLayout.minY + physicalLayout.maxY) / 2 - heightInches / 2
+        let color = DisplayDefaults.paletteColor(at: displays.count)
+        let configuration = DisplayConfiguration(
+            persistentID: persistentID, nickname: name, widthInches: widthInches, heightInches: heightInches,
+            xInches: x, yInches: y, rotation: 0, isCalibrated: false, colorHex: color,
+            isVirtual: true, pixelWidth: pixelWidth, pixelHeight: pixelHeight
+        )
+        UndoCenter.shared.perform("Add Virtual Display") {
+            DisplayConfigurationStore.shared.save(configuration)
+            VirtualDisplayStore.shared.ids.append(persistentID)
+            reloadDisplays()
+            select(.display(VirtualDisplayStore.displayID(for: persistentID)))
+        }
+    }
+
+    var canDeleteSelectedVirtualDisplays: Bool { selectedDisplays.contains { $0.isVirtual && !$0.isLocked } }
+
+    /// Deletes the selected virtual displays. Connected displays are left alone.
+    func deleteSelectedVirtualDisplays() {
+        let doomed = selectedDisplays.filter { $0.isVirtual && !$0.isLocked }
+        guard !doomed.isEmpty else { return }
+        UndoCenter.shared.perform(doomed.count > 1 ? "Delete Virtual Displays" : "Delete Virtual Display") {
+            let ids = Set(doomed.map(\.persistentID))
+            VirtualDisplayStore.shared.ids.removeAll { ids.contains($0) }
+            reloadDisplays()
+        }
+    }
+
+    /// Moves the selected virtual display's place, size and look onto a connected display.
+    func assignSelectedVirtualDisplay(to realID: CGDirectDisplayID) {
+        guard let virtualID = selectedDisplayID,
+              let virtual = displays.first(where: { $0.displayID == virtualID }), virtual.isVirtual, !virtual.isLocked,
+              let real = displays.first(where: { $0.displayID == realID }), !real.isVirtual,
+              let placed = physicalLayout.displays.first(where: { $0.id == virtualID }) else { return }
+        UndoCenter.shared.perform("Assign Virtual Display") {
+            var configuration = virtual.makeConfiguration()
+            configuration.persistentID = real.persistentID
+            configuration.isVirtual = false
+            configuration.pixelWidth = real.pixelWidth
+            configuration.pixelHeight = real.pixelHeight
+            configuration.xInches = Double(placed.x)
+            configuration.yInches = Double(placed.y)
+            DisplayConfigurationStore.shared.save(configuration)
+            VirtualDisplayStore.shared.ids.removeAll { $0 == virtual.persistentID }
+            reloadDisplays()
+            select(.display(realID))
+        }
     }
 
     // MARK: - Refresh

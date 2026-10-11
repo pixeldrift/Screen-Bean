@@ -63,6 +63,9 @@ struct DisplayInfo {
     /// When locked, the display can't be edited or dragged.
     var isLocked: Bool = false
 
+    /// A planned display that isn't connected. It has no screen to draw on or set a wallpaper for.
+    var isVirtual: Bool = false
+
     var aspectRatio: Double {
         Double(pixelWidth) / Double(pixelHeight)
     }
@@ -179,6 +182,12 @@ struct DisplayInfo {
             infos.append(info)
         }
 
+        // Virtual displays follow the real ones, which keep the reference position.
+        for var virtual in VirtualDisplayStore.shared.displays() {
+            if !virtual.isColorCustom { virtual.colorHex = DisplayDefaults.paletteColor(at: infos.count) }
+            infos.append(virtual)
+        }
+
         return infos
     }
 
@@ -268,7 +277,10 @@ struct DisplayInfo {
             bezelRight: bezelRight,
             bezelColorHex: bezelColorHex,
             showBezel: showBezel,
-            isLocked: isLocked
+            isLocked: isLocked,
+            isVirtual: isVirtual,
+            pixelWidth: pixelWidth,
+            pixelHeight: pixelHeight
         )
     }
 
@@ -301,3 +313,25 @@ struct DisplayInfo {
 }
 
 extension DisplayInfo: Equatable {}
+
+// An initializer here, not in the struct, keeps the memberwise one.
+extension DisplayInfo {
+    /// A virtual display built from its saved settings.
+    init(virtual configuration: DisplayConfiguration) {
+        displayID = VirtualDisplayStore.displayID(for: configuration.persistentID)
+        persistentID = configuration.persistentID
+        nickname = configuration.nickname
+        pixelWidth = configuration.pixelWidth
+        pixelHeight = configuration.pixelHeight
+        physicalWidthInches = configuration.widthInches
+        physicalHeightInches = configuration.heightInches
+        detectedWidthInches = configuration.widthInches
+        detectedHeightInches = configuration.heightInches
+        isCalibrated = false
+        positionX = 0
+        positionY = 0
+        isPrimary = false
+        isVirtual = true
+        apply(configuration: configuration)
+    }
+}

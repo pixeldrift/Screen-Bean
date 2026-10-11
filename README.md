@@ -495,9 +495,9 @@ The sidebar for editing the selected display: nickname, physical size, position,
 * [x]	Detect each display's rotation and mirroring from macOS
 * [x]	Refresh displays and open System Settings
 * [x]	Undo and redo for layout edits (Edit menu, Command-Z and Shift-Command-Z)
-* [ ]	Add Virtual Display: create displays that aren't connected, from a known size and place, so layouts can be planned before hardware is set up (projectors, for example)
-* [ ]	Virtual displays stay in the layout while disconnected, with a corner icon showing whether each is connected or virtual
-* [ ]	Assign a virtual display to a physical display later
+* [x]	Add Virtual Display: create displays that aren't connected, from a known size and place, so layouts can be planned before hardware is set up (projectors, for example)
+* [x]	Virtual displays stay in the layout while disconnected, with a corner icon showing whether each is connected or virtual
+* [x]	Assign a virtual display to a physical display later
 * [ ]	Displays sidebar panel listing every display: collapsed by default with an icon to toggle it, List and Thumbnail views, minimal details for each
 * [ ]	Layout presets: save the whole setup (display positions, sizes, bezels, colors, locks, guides, images) under a name, such as Work or Home, and switch between them
 * [ ]	Presets remember which displays were connected and suggest the matching preset when the connected displays change

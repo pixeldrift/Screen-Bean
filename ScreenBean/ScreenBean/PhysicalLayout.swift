@@ -33,6 +33,8 @@ struct PhysicalLayout {
         var bezelColorHex: String = DisplayDefaults.bezelColorHex
         var showBezel: Bool = true
         var isLocked: Bool = false
+        /// A planned display that isn't connected.
+        var isVirtual: Bool = false
 
         /// Position of the upper-left corner in physical inches.
         var x: CGFloat

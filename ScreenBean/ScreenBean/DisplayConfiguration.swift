@@ -8,7 +8,7 @@
 import Foundation
 
 struct DisplayConfiguration: Codable {
-    let persistentID: String
+    var persistentID: String
     var nickname: String
     var widthInches: Double
     var heightInches: Double
@@ -31,6 +31,12 @@ struct DisplayConfiguration: Codable {
     var showBezel: Bool
     var isLocked: Bool
 
+    /// A planned display that isn't connected. Its pixel size is kept here, since there's no
+    /// hardware to read it from.
+    var isVirtual: Bool
+    var pixelWidth: Int
+    var pixelHeight: Int
+
     init(
         persistentID: String,
         nickname: String,
@@ -50,7 +56,10 @@ struct DisplayConfiguration: Codable {
         bezelRight: Double = DisplayDefaults.bezelInches,
         bezelColorHex: String = DisplayDefaults.bezelColorHex,
         showBezel: Bool = true,
-        isLocked: Bool = false
+        isLocked: Bool = false,
+        isVirtual: Bool = false,
+        pixelWidth: Int = 1920,
+        pixelHeight: Int = 1080
     ) {
         self.persistentID = persistentID
         self.nickname = nickname
@@ -71,13 +80,16 @@ struct DisplayConfiguration: Codable {
         self.bezelColorHex = bezelColorHex
         self.showBezel = showBezel
         self.isLocked = isLocked
+        self.isVirtual = isVirtual
+        self.pixelWidth = pixelWidth
+        self.pixelHeight = pixelHeight
     }
 
     private enum CodingKeys: String, CodingKey {
         case persistentID, nickname, widthInches, heightInches
         case xInches, yInches, rotation, isCalibrated
         case colorHex, isColorCustom, uniformBezel, bezelUniform, bezelTop, bezelBottom, bezelLeft, bezelRight
-        case bezelColorHex, showBezel, isLocked
+        case bezelColorHex, showBezel, isLocked, isVirtual, pixelWidth, pixelHeight
     }
 
     init(from decoder: Decoder) throws {
@@ -103,5 +115,8 @@ struct DisplayConfiguration: Codable {
         bezelColorHex = try values.decodeIfPresent(String.self, forKey: .bezelColorHex) ?? DisplayDefaults.bezelColorHex
         showBezel = try values.decodeIfPresent(Bool.self, forKey: .showBezel) ?? true
         isLocked = try values.decodeIfPresent(Bool.self, forKey: .isLocked) ?? false
+        isVirtual = try values.decodeIfPresent(Bool.self, forKey: .isVirtual) ?? false
+        pixelWidth = try values.decodeIfPresent(Int.self, forKey: .pixelWidth) ?? 1920
+        pixelHeight = try values.decodeIfPresent(Int.self, forKey: .pixelHeight) ?? 1080
     }
 }
