@@ -16,6 +16,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var previewButton: NSButton { sidebarView.previewWallpaperButton }
     private var liveCheckbox: NSButton { sidebarView.liveCheckbox }
     private var liveWork: DispatchWorkItem?
+    private let switchPresetMenu = NSMenu(title: "Switch Layout")
+    private let renamePresetMenu = NSMenu(title: "Rename Layout")
+    private let deletePresetMenu = NSMenu(title: "Delete Layout")
+    private var screenChangeWork: DispatchWorkItem?
     private var excludePrimaryCheckbox: NSButton { sidebarView.settingsPanel.excludePrimaryCheckbox }
     private static let excludePrimaryKey = "ScreenBean.ExcludePrimaryFromIdentify"
 
@@ -57,6 +61,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let deleteVirtualItem = NSMenuItem(title: "Delete Virtual Display", action: #selector(deleteVirtualDisplay), keyEquivalent: "")
         deleteVirtualItem.target = self
         layoutMenu.addItem(deleteVirtualItem)
+        layoutMenu.addItem(.separator())
+        let savePresetItem = NSMenuItem(title: "Save Layout as Preset…", action: #selector(savePreset), keyEquivalent: "")
+        savePresetItem.target = self
+        layoutMenu.addItem(savePresetItem)
+        let updatePresetItem = NSMenuItem(title: "Update Active Preset", action: #selector(updateActivePreset), keyEquivalent: "")
+        updatePresetItem.target = self
+        layoutMenu.addItem(updatePresetItem)
+        for (title, submenu) in [("Switch to Preset", switchPresetMenu), ("Rename Preset", renamePresetMenu), ("Delete Preset", deletePresetMenu)] {
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            item.submenu = submenu
+            layoutMenu.addItem(item)
+        }
+        rebuildPresetMenus()
+        NotificationCenter.default.addObserver(forName: LayoutPresetStore.didChange, object: nil, queue: .main) { [weak self] _ in self?.rebuildPresetMenus() }
+        // Plugging or unplugging a display re-reads the layout and may suggest a saved preset for the new set.
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in self?.screenParametersChanged() }
         layoutMenuItem.submenu = layoutMenu
         let viewMenuItem = NSMenuItem()
         mainMenu.addItem(viewMenuItem)
@@ -244,6 +264,128 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         refreshOverlays()
     }
 
+    // MARK: - Layout Presets
+
+    private func rebuildPresetMenus() {
+        let store = LayoutPresetStore.shared
+        let actions: [(NSMenu, Selector)] = [(switchPresetMenu, #selector(applyPresetFromMenu(_:))), (renamePresetMenu, #selector(renamePresetFromMenu(_:))), (deletePresetMenu, #selector(deletePresetFromMenu(_:)))]
+        for (menu, action) in actions {
+            menu.removeAllItems()
+            if store.presets.isEmpty {
+                let empty = NSMenuItem(title: "No Saved Layouts", action: nil, keyEquivalent: "")
+                empty.isEnabled = false
+                menu.addItem(empty)
+                continue
+            }
+            for preset in store.presets {
+                let item = NSMenuItem(title: preset.name, action: action, keyEquivalent: "")
+                item.target = self
+                item.representedObject = preset.id
+                if menu === switchPresetMenu, preset.id == store.activeID { item.state = .on }
+                menu.addItem(item)
+            }
+        }
+    }
+
+    /// Asks for a name in a small dialog. Returns nil if cancelled or left empty.
+    private func promptForName(title: String, message: String, defaultName: String, button: String) -> String? {
+        let field = NSTextField(string: defaultName)
+        field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.accessoryView = field
+        alert.addButton(withTitle: button)
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
+    }
+
+    private func presetFromMenu(_ sender: NSMenuItem) -> LayoutPreset? {
+        (sender.representedObject as? UUID).flatMap { LayoutPresetStore.shared.preset(withID: $0) }
+    }
+
+    @objc private func savePreset() {
+        guard let mainView else { return }
+        let count = LayoutPresetStore.shared.presets.count + 1
+        guard let name = promptForName(title: "Save Layout as Preset", message: "Saves where every display sits and how it looks, plus guides and image placement, so you can switch back to it later.", defaultName: "Layout \(count)", button: "Save") else { return }
+        LayoutPresetStore.shared.add(mainView.makePreset(named: name))
+    }
+
+    @objc private func updateActivePreset() {
+        guard let mainView, let active = LayoutPresetStore.shared.active else { return }
+        let alert = NSAlert()
+        alert.messageText = "Update \u{201C}\(active.name)\u{201D}?"
+        alert.informativeText = "Replaces the saved layout with what is in the workspace now."
+        alert.addButton(withTitle: "Update")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        LayoutPresetStore.shared.update(active.id, with: mainView.makePreset(named: active.name))
+    }
+
+    @objc private func applyPresetFromMenu(_ sender: NSMenuItem) {
+        guard let preset = presetFromMenu(sender) else { return }
+        applyPreset(preset)
+    }
+
+    private func applyPreset(_ preset: LayoutPreset) {
+        guard let mainView else { return }
+        let missing = mainView.apply(preset)
+        LayoutPresetStore.shared.activeID = preset.id
+        refreshOverlays()
+        scheduleLivePreview()
+        if missing > 0 {
+            showAlert("Some displays aren't connected", "\u{201C}\(preset.name)\u{201D} also had \(missing) display\(missing == 1 ? "" : "s") that aren't connected right now, so \(missing == 1 ? "it was" : "they were") left out.")
+        }
+    }
+
+    @objc private func renamePresetFromMenu(_ sender: NSMenuItem) {
+        guard let preset = presetFromMenu(sender),
+              let name = promptForName(title: "Rename Layout", message: "", defaultName: preset.name, button: "Rename") else { return }
+        LayoutPresetStore.shared.rename(preset.id, to: name)
+    }
+
+    @objc private func deletePresetFromMenu(_ sender: NSMenuItem) {
+        guard let preset = presetFromMenu(sender) else { return }
+        let alert = NSAlert()
+        alert.messageText = "Delete \u{201C}\(preset.name)\u{201D}?"
+        alert.informativeText = "The saved layout is removed. Your current workspace isn't changed."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        LayoutPresetStore.shared.delete(preset.id)
+    }
+
+    /// A display was plugged in or removed: re-read the layout, then offer the saved preset for this set of displays.
+    private func screenParametersChanged() {
+        screenChangeWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let mainView = self.mainView else { return }
+            self.refreshDisplays()
+            let store = LayoutPresetStore.shared
+            let connected = Set(mainView.connectedDisplays.map(\.persistentID))
+            let key = connected.sorted().joined(separator: ",")
+            guard key != store.lastSuggestedSet else { return }
+            store.lastSuggestedSet = key
+            let matches = store.presets(matching: connected)
+            guard let match = matches.first, !matches.contains(where: { $0.id == store.activeID }), self.window.isVisible else { return }
+            let alert = NSAlert()
+            alert.messageText = "Switch to \u{201C}\(match.name)\u{201D}?"
+            alert.informativeText = "The connected displays match this saved layout."
+            alert.addButton(withTitle: "Switch")
+            alert.addButton(withTitle: "Not Now")
+            alert.beginSheetModal(for: self.window) { response in
+                if response == .alertFirstButtonReturn { self.applyPreset(match) }
+            }
+        }
+        screenChangeWork = work
+        // Displays settle for a moment after being plugged in.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
+    }
+
     // MARK: - Virtual Displays
 
     @objc private func addVirtualDisplay() {
@@ -367,6 +509,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if item.action == #selector(toggleGapMeasurements) { item.state = GuideSettings.showGapMeasurements ? .on : .off }
         if item.action == #selector(toggleGuides) { item.state = GuideSettings.showEdgeGuides && GuideSettings.showCustomGuides ? .on : .off }
         if item.action == #selector(deleteVirtualDisplay) { return mainView?.canDeleteSelectedVirtualDisplays ?? false }
+        if item.action == #selector(updateActivePreset) {
+            if let active = LayoutPresetStore.shared.active { item.title = "Update \u{201C}\(active.name)\u{201D} with Current Layout" } else { item.title = "Update Active Preset" }
+            return LayoutPresetStore.shared.active != nil
+        }
         if item.action == #selector(clearGuides) { return !GuideStore.shared.guides.isEmpty }
         if item.action == #selector(toggleFractions) {
             item.state = MeasurementFormat.useFractions ? .on : .off

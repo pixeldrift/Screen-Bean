@@ -1562,16 +1562,8 @@ class DisplayArrangementView: NSView {
         suppressDisplayRebuild = false
         physicalLayout.displays = snapshot.layout
         GuideStore.shared.replaceAll(snapshot.guides)
-        for (slot, state) in [(ImageLayerSlot.referenceImage, snapshot.reference), (.wallpaper, snapshot.wallpaper)] {
-            if layer(slot).image != nil, let frame = state.frame {
-                setFrame(frame, for: slot)
-                onImageFrameChanged?(slot, frame)
-            }
-            if layer(slot).isLocked != state.isLocked {
-                setImageLocked(state.isLocked, for: slot)
-                onImageLockChanged?(slot, state.isLocked)
-            }
-        }
+        applyImageState(.referenceImage, snapshot.reference)
+        applyImageState(.wallpaper, snapshot.wallpaper)
         // Undoing the adding or deleting of a virtual display changes which ones exist.
         VirtualDisplayStore.shared.ids = displays.filter(\.isVirtual).map(\.persistentID)
         for display in displays { syncLayoutToDisplay(id: display.displayID, save: true) }
@@ -1582,6 +1574,18 @@ class DisplayArrangementView: NSView {
             onDisplayValuesChanged?(info, item.centerX, item.centerY)
         }
         needsDisplay = true
+    }
+
+    /// Puts an image's placement and lock back, telling the app so it can save them.
+    private func applyImageState(_ slot: ImageLayerSlot, _ state: ImageLayerState) {
+        if layer(slot).image != nil, let frame = state.frame {
+            setFrame(frame, for: slot)
+            onImageFrameChanged?(slot, frame)
+        }
+        if layer(slot).isLocked != state.isLocked {
+            setImageLocked(state.isLocked, for: slot)
+            onImageLockChanged?(slot, state.isLocked)
+        }
     }
 
     /// Ends a mouse gesture, recording it as an undo step if it changed anything.
@@ -1877,6 +1881,46 @@ class DisplayArrangementView: NSView {
             neededPPI = max(neededPPI, Double(info.pixelWidth) / max(Double(placed.width), 0.01))
         }
         return WallpaperExport(slices: slices, imagePixelsPerInch: Double(cgImage.width) / Double(imageRect.width), neededPixelsPerInch: neededPPI)
+    }
+
+    // MARK: - Layout Presets
+    /// Everything a preset keeps, as the workspace is now.
+    func makePreset(named name: String) -> LayoutPreset {
+        LayoutPreset(
+            name: name,
+            displays: displays.compactMap { currentConfiguration(for: $0.displayID) },
+            guides: GuideStore.shared.guides,
+            referenceFrame: referenceLayer.frame, wallpaperFrame: wallpaperLayer.frame,
+            referenceLocked: referenceLayer.isLocked, wallpaperLocked: wallpaperLayer.isLocked,
+            connectedIDs: displays.filter { !$0.isVirtual }.map(\.persistentID)
+        )
+    }
+
+    /// Switches the workspace to a preset in one undoable step. Displays the preset knows
+    /// that aren't connected right now are skipped; the count of those is returned.
+    @discardableResult
+    func apply(_ preset: LayoutPreset) -> Int {
+        let connected = Set(displays.filter { !$0.isVirtual }.map(\.persistentID))
+        var missing = 0
+        UndoCenter.shared.perform("Apply Layout \u{201C}\(preset.name)\u{201D}") {
+            var virtualIDs: [String] = []
+            for configuration in preset.displays {
+                if configuration.isVirtual {
+                    DisplayConfigurationStore.shared.save(configuration)
+                    virtualIDs.append(configuration.persistentID)
+                } else if connected.contains(configuration.persistentID) {
+                    DisplayConfigurationStore.shared.save(configuration)
+                } else {
+                    missing += 1
+                }
+            }
+            VirtualDisplayStore.shared.ids = virtualIDs
+            GuideStore.shared.replaceAll(preset.guides)
+            reloadDisplays()
+            applyImageState(.referenceImage, ImageLayerState(frame: preset.referenceFrame, isLocked: preset.referenceLocked))
+            applyImageState(.wallpaper, ImageLayerState(frame: preset.wallpaperFrame, isLocked: preset.wallpaperLocked))
+        }
+        return missing
     }
 
     // MARK: - Virtual Displays
@@ -2413,18 +2457,19 @@ class DisplayArrangementView: NSView {
         syncLayoutToDisplay(id: id, save: save)
     }
 
-    /// Saves one display's size, position and appearance with the others.
-    private func syncLayoutToDisplay(id: CGDirectDisplayID, save: Bool) {
-        guard let item = physicalLayout.displays.first(where: { $0.id == id }), let i = displays.firstIndex(where: { $0.displayID == id }) else { return }
+    /// One display's size, position and appearance, as saved.
+    private func currentConfiguration(for id: CGDirectDisplayID) -> DisplayConfiguration? {
+        guard let item = physicalLayout.displays.first(where: { $0.id == id }), let i = displays.firstIndex(where: { $0.displayID == id }) else { return nil }
         var configuration = displays[i].makeConfiguration()
         configuration.xInches = Double(item.x); configuration.yInches = Double(item.y)
         configuration.widthInches = displays[i].physicalWidthInches; configuration.heightInches = displays[i].physicalHeightInches
-        configuration.nickname = displays[i].nickname; configuration.colorHex = displays[i].colorHex
-        configuration.uniformBezel = displays[i].uniformBezel
-        configuration.bezelTop = displays[i].bezelTop; configuration.bezelBottom = displays[i].bezelBottom
-        configuration.bezelLeft = displays[i].bezelLeft; configuration.bezelRight = displays[i].bezelRight
-        configuration.bezelColorHex = displays[i].bezelColorHex; configuration.showBezel = displays[i].showBezel; configuration.isLocked = displays[i].isLocked
-        if save { DisplayConfigurationStore.shared.save(configuration) }
+        return configuration
+    }
+
+    /// Saves one display's size, position and appearance with the others.
+    private func syncLayoutToDisplay(id: CGDirectDisplayID, save: Bool) {
+        guard save, let configuration = currentConfiguration(for: id) else { return }
+        DisplayConfigurationStore.shared.save(configuration)
     }
 
     // MARK: - Scroll Zoom
