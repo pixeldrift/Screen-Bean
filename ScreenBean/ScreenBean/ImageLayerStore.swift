@@ -64,6 +64,11 @@ final class ImageLayerStore {
         else { defaults.removeObject(forKey: frameKey(slot)) }
     }
 
+    private let clipKey = "ScreenBean.ImageLayer.wallpaper.clipToDisplays"
+
+    func loadWallpaperClip() -> Bool { defaults.bool(forKey: clipKey) }
+    func saveWallpaperClip(_ clipped: Bool) { defaults.set(clipped, forKey: clipKey) }
+
     func loadBlend(_ slot: ImageLayerSlot) -> Double {
         defaults.object(forKey: blendKey(slot)) as? Double ?? 0
     }

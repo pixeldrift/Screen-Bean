@@ -33,24 +33,42 @@ class DisplayArrangementView: NSView {
     }
 
     /// Photo or plan drawn as a layout reference, independent of the displays.
-    var referenceLayer = ImageLayer() {
-        didSet {
-            if referenceLayer.image == nil {
-                referenceLayer.frame = nil
-                onReferenceFrameChanged?(nil)
-                if isReferenceImageSelected { isReferenceImageSelected = false }
-            } else if referenceLayer.frame == nil {
-                referenceLayer.frame = defaultReferenceFrame()
-                onReferenceFrameChanged?(referenceLayer.frame)
-            }
-            needsDisplay = true
-        }
-    }
-    /// Called when the reference image is moved or scaled in the workspace.
-    var onReferenceFrameChanged: ((ImageFrame?) -> Void)?
+    var referenceLayer = ImageLayer() { didSet { layerDidChange(.referenceImage) } }
     /// One image spanned across the whole arrangement.
-    var wallpaperLayer = ImageLayer() { didSet { needsDisplay = true } }
-    private var imageLayers: [ImageLayer] { [referenceLayer, wallpaperLayer] }
+    var wallpaperLayer = ImageLayer() { didSet { layerDidChange(.wallpaper) } }
+    /// When on, the wallpaper only shows where it overlaps a display.
+    var wallpaperClipsToDisplays = false { didSet { needsDisplay = true } }
+    /// Called when an image is moved or scaled in the workspace, or its frame is created or cleared.
+    var onImageFrameChanged: ((ImageLayerSlot, ImageFrame?) -> Void)?
+
+    /// Image layers from back to front.
+    private let imageSlots: [ImageLayerSlot] = [.referenceImage, .wallpaper]
+
+    private func layer(_ slot: ImageLayerSlot) -> ImageLayer {
+        slot == .referenceImage ? referenceLayer : wallpaperLayer
+    }
+
+    private func setFrame(_ frame: ImageFrame?, for slot: ImageLayerSlot) {
+        if slot == .referenceImage { referenceLayer.frame = frame } else { wallpaperLayer.frame = frame }
+    }
+
+    /// Gives a new image a starting frame and drops the frame and selection of a removed one.
+    private func layerDidChange(_ slot: ImageLayerSlot) {
+        let current = layer(slot)
+        if current.image == nil {
+            if current.frame != nil {
+                setFrame(nil, for: slot)
+                onImageFrameChanged?(slot, nil)
+            }
+            if selectedImage == slot { selectedImage = nil }
+        } else if current.frame == nil {
+            let frame = defaultFrame(for: slot)
+            setFrame(frame, for: slot)
+            onImageFrameChanged?(slot, frame)
+        }
+        needsDisplay = true
+    }
+
     // MARK: - Workspace Camera
     /// Number of view points used to represent one physical inch
     /// at the default zoom level.
@@ -64,7 +82,7 @@ class DisplayArrangementView: NSView {
     private var panStartOffset = CGPoint.zero
     private var isPanning = false
     // Selection, hover and drag state for displays and the reference image.
-    private var isReferenceImageSelected = false
+    private var selectedImage: ImageLayerSlot?
     private var hoverTarget: EditTarget?
     private var dragTarget: EditTarget?
     private var dragMode = DragMode.move
@@ -80,7 +98,7 @@ class DisplayArrangementView: NSView {
     /// Something in the workspace that can be moved and resized.
     private enum EditTarget: Equatable {
         case display(CGDirectDisplayID)
-        case referenceImage
+        case image(ImageLayerSlot)
     }
 
     private enum DragMode {
@@ -274,7 +292,7 @@ class DisplayArrangementView: NSView {
         guard !physicalLayout.displays.isEmpty else {
             return
         }
-        for layer in imageLayers where !layer.blend.aboveDisplays { drawImageLayer(layer) }
+        for slot in imageSlots where !layer(slot).blend.aboveDisplays { drawImageLayer(slot) }
         for display in physicalLayout.displays {
             let rect =
                 physicalRectToView(
@@ -287,7 +305,7 @@ class DisplayArrangementView: NSView {
                 isSelected: display.id == selectedDisplayID
             )
         }
-        for layer in imageLayers where layer.blend.aboveDisplays { drawImageLayer(layer) }
+        for slot in imageSlots where layer(slot).blend.aboveDisplays { drawImageLayer(slot) }
         var withHandles: [EditTarget] = []
         for target in [currentSelection, hoverTarget].compactMap({ $0 }) where !withHandles.contains(target) {
             withHandles.append(target)
@@ -296,32 +314,42 @@ class DisplayArrangementView: NSView {
     }
 
     // MARK: - Image Layers
-    /// Where an image layer sits, in physical inches. Layers without a frame
-    /// are anchored to the arrangement's corner at the arrangement's width.
+    /// Where an image layer sits, in physical inches.
     private func physicalRect(of layer: ImageLayer) -> CGRect? {
-        guard let image = layer.image, image.size.width > 0, image.size.height > 0 else { return nil }
-        let aspect = image.size.height / image.size.width
-        if let frame = layer.frame {
-            let height = CGFloat(frame.width) * aspect
-            return CGRect(x: CGFloat(frame.centerX - frame.width / 2), y: CGFloat(frame.centerY) - height / 2, width: CGFloat(frame.width), height: height)
-        }
-        guard physicalLayout.width > 0 else { return nil }
-        return CGRect(x: physicalLayout.minX, y: physicalLayout.minY, width: physicalLayout.width, height: physicalLayout.width * aspect)
+        guard let image = layer.image, image.size.width > 0, image.size.height > 0, let frame = layer.frame else { return nil }
+        let height = CGFloat(frame.width) * image.size.height / image.size.width
+        return CGRect(x: CGFloat(frame.centerX - frame.width / 2), y: CGFloat(frame.centerY) - height / 2, width: CGFloat(frame.width), height: height)
     }
 
-    /// New reference images start at the arrangement's width, centered on it.
-    private func defaultReferenceFrame() -> ImageFrame {
-        guard physicalLayout.width > 0 else { return ImageFrame(centerX: 0, centerY: 0, width: 40) }
+    /// A new image starts centered on the arrangement: the reference image at the
+    /// arrangement's width, the wallpaper scaled up to cover the whole arrangement.
+    private func defaultFrame(for slot: ImageLayerSlot) -> ImageFrame {
+        guard physicalLayout.width > 0, let image = layer(slot).image, image.size.width > 0 else {
+            return ImageFrame(centerX: 0, centerY: 0, width: 40)
+        }
+        var width = physicalLayout.width
+        if slot == .wallpaper {
+            let aspect = image.size.height / image.size.width
+            width = max(width, physicalLayout.height / aspect)
+        }
         return ImageFrame(
             centerX: Double((physicalLayout.minX + physicalLayout.maxX) / 2),
             centerY: Double((physicalLayout.minY + physicalLayout.maxY) / 2),
-            width: Double(physicalLayout.width)
+            width: Double(width)
         )
     }
 
-    private func drawImageLayer(_ layer: ImageLayer) {
-        guard let image = layer.image, layer.blend.opacity > 0, let physical = physicalRect(of: layer) else { return }
-        image.draw(in: viewRect(forPhysical: physical), from: .zero, operation: .sourceOver, fraction: CGFloat(layer.blend.opacity), respectFlipped: true, hints: nil)
+    private func drawImageLayer(_ slot: ImageLayerSlot) {
+        let current = layer(slot)
+        guard let image = current.image, current.blend.opacity > 0, let physical = physicalRect(of: current) else { return }
+        NSGraphicsContext.saveGraphicsState()
+        if slot == .wallpaper && wallpaperClipsToDisplays {
+            let clip = NSBezierPath()
+            for display in physicalLayout.displays { clip.appendRect(physicalRectToView(display)) }
+            clip.addClip()
+        }
+        image.draw(in: viewRect(forPhysical: physical), from: .zero, operation: .sourceOver, fraction: CGFloat(current.blend.opacity), respectFlipped: true, hints: nil)
+        NSGraphicsContext.restoreGraphicsState()
     }
 
     // MARK: - Grid
@@ -619,28 +647,30 @@ class DisplayArrangementView: NSView {
         switch target {
         case .display(let id):
             return physicalLayout.displays.first(where: { $0.id == id }).map(outerPhysicalRect)
-        case .referenceImage:
-            return physicalRect(of: referenceLayer)
+        case .image(let slot):
+            return physicalRect(of: layer(slot))
         }
     }
 
     private func isEditable(_ target: EditTarget) -> Bool {
         switch target {
         case .display(let id): return physicalLayout.displays.first(where: { $0.id == id })?.isLocked == false
-        case .referenceImage: return referenceLayer.image != nil
+        case .image(let slot): return layer(slot).image != nil
         }
     }
 
     private var currentSelection: EditTarget? {
         if let id = selectedDisplayID { return .display(id) }
-        return isReferenceImageSelected ? .referenceImage : nil
+        return selectedImage.map { .image($0) }
     }
 
     /// Targets from front to back, following the reference image's layer setting.
     private func targetsFrontToBack() -> [EditTarget] {
         let displayTargets = physicalLayout.displays.reversed().map { EditTarget.display($0.id) }
-        guard referenceLayer.image != nil, referenceLayer.blend.opacity > 0 else { return displayTargets }
-        return referenceLayer.blend.aboveDisplays ? [.referenceImage] + displayTargets : displayTargets + [.referenceImage]
+        func isShown(_ slot: ImageLayerSlot) -> Bool { layer(slot).image != nil && layer(slot).blend.opacity > 0 }
+        let front = imageSlots.reversed().filter { isShown($0) && layer($0).blend.aboveDisplays }.map { EditTarget.image($0) }
+        let back = imageSlots.reversed().filter { isShown($0) && !layer($0).blend.aboveDisplays }.map { EditTarget.image($0) }
+        return front + displayTargets + back
     }
 
     // MARK: - Grab Handles
@@ -820,10 +850,10 @@ class DisplayArrangementView: NSView {
     /// Selects a display or the reference image, or clears the selection.
     private func select(_ target: EditTarget?) {
         selectedDisplayID = nil
-        isReferenceImageSelected = false
+        selectedImage = nil
         switch target {
         case .display(let id): selectedDisplayID = id
-        case .referenceImage: isReferenceImageSelected = true
+        case .image(let slot): selectedImage = slot
         case nil: break
         }
         onSelectionChanged?(selectedDisplayInfo())
@@ -882,7 +912,7 @@ class DisplayArrangementView: NSView {
                     let i = bezelInsets(d)
                     minSize = CGSize(width: i.left + i.right + minimumItemSize, height: i.top + i.bottom + minimumItemSize)
                 }
-                rect = resizedRect(dragStartRect, handle: handle, to: viewToPhysical(currentPoint), keepAspect: dragTarget == .referenceImage, minSize: minSize)
+                rect = resizedRect(dragStartRect, handle: handle, to: viewToPhysical(currentPoint), keepAspect: { if case .image = dragTarget { return true } else { return false } }(), minSize: minSize)
             }
             apply(rect, to: dragTarget)
             return
@@ -904,9 +934,10 @@ class DisplayArrangementView: NSView {
     /// Moves or resizes an item so its footprint (including bezel for displays) is `rect`.
     private func apply(_ rect: CGRect, to target: EditTarget) {
         switch target {
-        case .referenceImage:
-            referenceLayer.frame = ImageFrame(centerX: Double(rect.midX), centerY: Double(rect.midY), width: Double(rect.width))
-            onReferenceFrameChanged?(referenceLayer.frame)
+        case .image(let slot):
+            let frame = ImageFrame(centerX: Double(rect.midX), centerY: Double(rect.midY), width: Double(rect.width))
+            setFrame(frame, for: slot)
+            onImageFrameChanged?(slot, frame)
         case .display(let id):
             guard let j = physicalLayout.displays.firstIndex(where: { $0.id == id }),
                   let i = displays.firstIndex(where: { $0.displayID == id }) else { return }

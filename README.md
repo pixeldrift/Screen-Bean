@@ -485,50 +485,53 @@ The sidebar for editing the selected display: nickname, physical size, position,
 * [x]	Scale to Fit
 * [x]	Center View
 * [x]	Physical measurement grid
-* [ ]	Rulers
 * [x]	Select displays
 * [x]	Drag displays
+* [x]	Resize displays from grab handles
+* [x]	Lock displays
 * [x]	Edit physical dimensions
-* [ ]	Display calibration UI
-* [x]	Detect each display's rotation and mirroring from macOS
-* [ ]	Rotate display clockwise (90°)
-* [ ]	Rotate display counterclockwise (90°)
-* [ ]	Flip display horizontally (mirror)
-* [ ]	Flip display vertically (mirror)
-* [ ]	Type fractional measurements (for example "23 1/8") in number inputs
-* [ ]	Toggle number inputs between decimal and fractions (nearest 16th)
-* [ ]	Unit options (inches, centimeters, and others)
 * [x]	Display color coding
 * [x]	Bezel visibility
-* [ ]	Display transparency
+* [x]	Detect each display's rotation and mirroring from macOS
+* [x]	Refresh displays and open System Settings
+* [ ]	Display calibration UI
+* [ ]	Rotate display clockwise (90°) in Screen Bean's layout
+* [ ]	Rotate display counterclockwise (90°) in Screen Bean's layout
+* [ ]	Flip display horizontally (mirror) in Screen Bean's layout
+* [ ]	Flip display vertically (mirror) in Screen Bean's layout
 
-### Phase 3 — Visual Calibration
+macOS has no public API for changing a display's rotation, so these edit Screen Bean's own layout. Detection from System Settings already works.
 
-* [x]	Import reference image
-* [x]	Position reference image
-* [x]	Scale reference image
-* [ ]	Rotate reference image
-* [x]	Adjust reference transparency
-* [ ]	Lock reference image
-* [ ]	Four-corner perspective correction
-* [ ]	Image warping
-* [ ]	Lens/perspective compensation
-* [ ]	Calibration patterns
-* [ ]	Measurement guides
-* [ ]	Alignment guides
-* [ ]	Custom guides
-
-### Phase 4 — Unified Wallpaper
+### Phase 3 — Unified Wallpaper
 
 * [x]	Import wallpaper
-* [ ]	Create unified physical canvas
-* [ ]	Position and scale wallpaper
-* [ ]	Preview wallpaper across displays
+* [x]	Create unified physical canvas
+* [x]	Position and scale wallpaper
+* [x]	Preview wallpaper across displays
+* [x]	Toggle preview clipped to the displays
 * [ ]	Account for display gaps
 * [ ]	Account for display rotation
 * [ ]	Calculate output resolution
 * [ ]	Slice unified image into per-display images
 * [ ]	Export display-specific wallpaper files
+* [ ]	Apply wallpaper to each display
+
+### Phase 4 — Visual Calibration
+
+* [x]	Import reference image
+* [x]	Position reference image
+* [x]	Scale reference image
+* [x]	Adjust reference transparency
+* [ ]	Rotate reference image
+* [ ]	Lock reference image
+* [ ]	Four-corner perspective correction
+* [ ]	Overlay windows on every display, so tools can draw outside the app window
+* [ ]	Rulers and alignment guides (one tool, drawn across all displays)
+* [ ]	Measurement guides
+* [ ]	Custom guides
+* [ ]	Type fractional measurements (for example "23 1/8") in number inputs
+* [ ]	Toggle number inputs between decimal and fractions (nearest 16th)
+* [ ]	Unit options (inches, centimeters, and others)
 
 ### Phase 5 — Mouse Mapping
 
@@ -568,6 +571,9 @@ The sidebar for editing the selected display: nickname, physical size, position,
 Rarely needed, so these wait until the main phases are working.
 
 * [ ]	Rotate displays to arbitrary angles (angled installations)
+* [ ]	Image warping
+* [ ]	Lens/perspective compensation
+* [ ]	Calibration patterns
 
 ---
 

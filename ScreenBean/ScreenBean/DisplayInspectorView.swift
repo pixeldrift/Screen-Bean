@@ -1,7 +1,7 @@
 import Cocoa
 
 /// Document view for the inspector's scroll view; top-left origin so content starts at the top.
-private final class FlippedView: NSView {
+final class FlippedView: NSView {
     override var isFlipped: Bool { true }
 }
 

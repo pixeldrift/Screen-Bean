@@ -15,6 +15,8 @@ final class ImageLayerPanel: NSView {
     var onImageChanged: ((NSImage?, Data?) -> Void)?
     /// Called with a blend value from -1 to 1. See `ImageLayerBlend`.
     var onBlendChanged: ((Double) -> Void)?
+    /// Called when the clip-to-displays checkbox changes (wallpaper only).
+    var onClipChanged: ((Bool) -> Void)?
     /// Called when the user edits the position or scale fields.
     var onFrameChanged: ((ImageFrame) -> Void)?
 
@@ -25,9 +27,11 @@ final class ImageLayerPanel: NSView {
     private let readout = NSTextField(labelWithString: "")
     private let x = NumberInput(), y = NumberInput(), width = NumberInput(), height = NumberInput()
     private var transformSection: NSView?
+    private let clipCheckbox = NSButton(checkboxWithTitle: "Preview clipped to displays", target: nil, action: nil)
 
     private let titleText: String
     private let showsTransform: Bool
+    private let showsClipToggle: Bool
     private var frameValue: ImageFrame?
 
     /// Height / width of the current image; 1 when there is none.
@@ -36,9 +40,10 @@ final class ImageLayerPanel: NSView {
         return Double(size.height / size.width)
     }
 
-    init(title: String, showsTransform: Bool = false) {
+    init(title: String, showsTransform: Bool = false, showsClipToggle: Bool = false) {
         titleText = title
         self.showsTransform = showsTransform
+        self.showsClipToggle = showsClipToggle
         super.init(frame: .zero)
         build()
     }
@@ -53,6 +58,9 @@ final class ImageLayerPanel: NSView {
         updateReadout()
         updateTransformVisibility()
     }
+
+    /// Shows the saved clip setting without notifying `onClipChanged`.
+    func restoreClip(_ clipped: Bool) { clipCheckbox.state = clipped ? .on : .off }
 
     /// Shows the image's current position and size, without notifying `onFrameChanged`.
     func showFrame(_ frame: ImageFrame?) {
@@ -115,6 +123,10 @@ final class ImageLayerPanel: NSView {
             let section = buildTransformSection()
             transformSection = section
             views.append(section)
+        }
+        if showsClipToggle {
+            clipCheckbox.target = self; clipCheckbox.action = #selector(clipToggled)
+            views.append(clipCheckbox)
         }
         views += [heading, sliderHolder, ends, readout]
         let stack = NSStackView(views: views)
@@ -194,6 +206,8 @@ final class ImageLayerPanel: NSView {
         updateReadout()
         updateTransformVisibility()
     }
+
+    @objc private func clipToggled() { onClipChanged?(clipCheckbox.state == .on) }
 
     @objc private func sliderChanged() {
         updateReadout()

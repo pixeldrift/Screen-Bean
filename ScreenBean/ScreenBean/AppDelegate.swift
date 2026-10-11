@@ -25,6 +25,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let mainView = DisplayArrangementView()
         mainView.wantsLayer = true
         mainView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        // Displays first, so new image frames can start centered on the arrangement.
+        mainView.displays = DisplayInfo.detectDisplays()
         let sidebar = SidebarView()
         let inspector = sidebar.inspector
         let store = ImageLayerStore.shared
@@ -37,18 +39,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             case .wallpaper: change(&mainView.wallpaperLayer)
             }
         }
-        mainView.onReferenceFrameChanged = { [weak sidebar] frame in
-            store.saveFrame(frame, for: .referenceImage)
-            sidebar?.referenceImagePanel.showFrame(frame)
+        mainView.onImageFrameChanged = { [weak sidebar] slot, frame in
+            store.saveFrame(frame, for: slot)
+            (slot == .referenceImage ? sidebar?.referenceImagePanel : sidebar?.wallpaperPanel)?.showFrame(frame)
         }
-        sidebar.referenceImagePanel.onFrameChanged = { [weak mainView] frame in
-            mainView?.referenceLayer.frame = frame
-            store.saveFrame(frame, for: .referenceImage)
+        mainView.wallpaperClipsToDisplays = store.loadWallpaperClip()
+        sidebar.wallpaperPanel.restoreClip(store.loadWallpaperClip())
+        sidebar.wallpaperPanel.onClipChanged = { [weak mainView] clipped in
+            store.saveWallpaperClip(clipped)
+            mainView?.wallpaperClipsToDisplays = clipped
         }
         for (slot, panel) in layerPanels {
             let image = store.loadImage(slot), blend = store.loadBlend(slot)
             panel.restore(image: image, blend: blend)
             setLayer(slot) { $0.image = image; $0.blend = ImageLayerBlend(value: blend); $0.frame = store.loadFrame(slot) }
+            panel.onFrameChanged = { frame in
+                setLayer(slot) { $0.frame = frame }
+                store.saveFrame(frame, for: slot)
+            }
             panel.onImageChanged = { image, data in
                 store.saveImageData(data, for: slot)
                 setLayer(slot) { $0.image = image }
@@ -111,7 +119,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             systemButtonStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12)
         ])
 
-        mainView.displays = DisplayInfo.detectDisplays()
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 680), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = "ScreenBean"
         window.contentView = container
