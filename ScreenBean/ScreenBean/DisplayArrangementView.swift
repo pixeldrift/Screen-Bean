@@ -302,7 +302,7 @@ class DisplayArrangementView: NSView {
             return
         }
         for slot in imageSlots where !layer(slot).blend.aboveDisplays { drawImageLayer(slot) }
-        for display in physicalLayout.displays {
+        for (index, display) in physicalLayout.displays.enumerated() {
             let rect =
                 physicalRectToView(
                     display
@@ -311,7 +311,8 @@ class DisplayArrangementView: NSView {
                 display,
                 in: context,
                 rect: rect,
-                isSelected: display.id == selectedDisplayID
+                isSelected: display.id == selectedDisplayID,
+                label: Self.displayLabel(index)
             )
         }
         for slot in imageSlots where layer(slot).blend.aboveDisplays { drawImageLayer(slot) }
@@ -479,7 +480,8 @@ class DisplayArrangementView: NSView {
         _ display: PhysicalLayout.Display,
         in context: CGContext,
         rect: CGRect,
-        isSelected: Bool
+        isSelected: Bool,
+        label: String
     ) {
         // Bezel thickness is stored in physical inches and scales with the canvas.
         let scale = pointsPerInch
@@ -557,41 +559,65 @@ class DisplayArrangementView: NSView {
 
         drawLockIcon(for: display, in: rect, isSelected: isSelected)
 
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.alignment = .center
-        let nameAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 14),
-            .paragraphStyle: paragraphStyle,
-            .foregroundColor: NSColor.black
-        ]
-        // Long names wrap (narrow, vertical displays) and grow upward from the center line.
-        let nameWidth = max(rect.width - 16, 1)
-        let nameHeight = ceil((display.nickname as NSString).boundingRect(
-            with: CGSize(width: nameWidth, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin],
-            attributes: nameAttributes
-        ).height)
-        let nameRect = CGRect(
-            x: rect.minX + 8,
-            y: rect.midY + 10,
-            width: nameWidth,
-            height: min(max(nameHeight, 20), max(rect.height / 2 - 10, 20))
-        )
-        display.nickname.draw(with: nameRect, options: [.usesLineFragmentOrigin], attributes: nameAttributes)
+        drawIdentity(of: display, label: label, in: rect)
+    }
 
-        let sizeText = String(format: "%.1f × %.1f in", display.width, display.height)
-        let sizeAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11),
-            .paragraphStyle: paragraphStyle,
-            .foregroundColor: NSColor.black
-        ]
-        let sizeRect = CGRect(
-            x: rect.minX + 8,
-            y: rect.midY - 12,
-            width: max(rect.width - 16, 1),
-            height: 18
-        )
-        sizeText.draw(in: sizeRect, withAttributes: sizeAttributes)
+    /// A, B, C ... then A1, B1 ... for a display's position in the list.
+    private static func displayLabel(_ index: Int) -> String {
+        let letter = String(UnicodeScalar(UInt8(65 + index % 26)))
+        return index < 26 ? letter : "\(letter)\(index / 26)"
+    }
+
+    /// A faint circle with the display's letter in the middle, and its name,
+    /// resolution and physical size in the lower quarter.
+    private func drawIdentity(of display: PhysicalLayout.Display, label: String, in rect: CGRect) {
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let diameter = min(rect.width, rect.height) * 0.5
+        let circle = CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2, width: diameter, height: diameter)
+        NSColor.white.withAlphaComponent(0.32).setFill()
+        NSBezierPath(ovalIn: circle).fill()
+
+        let ink = NSColor.black.withAlphaComponent(0.7)
+        if diameter >= 14 {
+            let letterAttributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: diameter * 0.62, weight: .bold), .foregroundColor: ink]
+            let letterSize = (label as NSString).size(withAttributes: letterAttributes)
+            (label as NSString).draw(
+                at: CGPoint(x: center.x - letterSize.width / 2, y: center.y - letterSize.height / 2),
+                withAttributes: letterAttributes
+            )
+        }
+
+        // Name, then resolution, then size; whatever doesn't fit in the lower quarter is dropped, last line first.
+        let info = displays.first(where: { $0.displayID == display.id })
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byWordWrapping
+        func attributes(_ size: CGFloat, weight: NSFont.Weight) -> [NSAttributedString.Key: Any] {
+            [.font: NSFont.systemFont(ofSize: size, weight: weight), .paragraphStyle: paragraph, .foregroundColor: ink]
+        }
+        let nameSize = min(max(rect.height * 0.055, 9), 15)
+        let detailSize = min(max(rect.height * 0.045, 8), 12)
+        var lines: [(text: String, attributes: [NSAttributedString.Key: Any])] = [(display.nickname, attributes(nameSize, weight: .semibold))]
+        if let info { lines.append(("\(info.pixelWidth) × \(info.pixelHeight) px", attributes(detailSize, weight: .regular))) }
+        lines.append(("\(MeasurementFormat.string(Double(display.width))) × \(MeasurementFormat.string(Double(display.height))) in", attributes(detailSize, weight: .regular)))
+
+        let box = CGRect(x: rect.minX + 8, y: rect.minY + 6, width: max(rect.width - 16, 1), height: rect.height / 4 - 6)
+        func height(of line: (text: String, attributes: [NSAttributedString.Key: Any])) -> CGFloat {
+            ceil((line.text as NSString).boundingRect(with: CGSize(width: box.width, height: .greatestFiniteMagnitude), options: .usesLineFragmentOrigin, attributes: line.attributes).height)
+        }
+        while lines.count > 1, lines.reduce(0, { $0 + height(of: $1) }) > box.height { lines.removeLast() }
+        guard let first = lines.first, height(of: first) <= box.height else { return }
+
+        var top = box.maxY
+        for line in lines {
+            let lineHeight = height(of: line)
+            (line.text as NSString).draw(
+                with: CGRect(x: box.minX, y: top - lineHeight, width: box.width, height: lineHeight),
+                options: .usesLineFragmentOrigin,
+                attributes: line.attributes
+            )
+            top -= lineHeight
+        }
     }
 
     /// Light and dark edge lines that make a rectangle look raised or recessed.
