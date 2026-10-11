@@ -71,6 +71,7 @@ class DisplayArrangementView: NSView {
     private var dragStartPoint = CGPoint.zero
     private var dragStartRect = CGRect.zero
     private var hasInitializedView = false
+    private var lastLayoutSize = CGSize.zero
     
 
     
@@ -129,15 +130,17 @@ class DisplayArrangementView: NSView {
 
         if !hasInitializedView {
             hasInitializedView = true
+            lastLayoutSize = bounds.size
             zoomToFit(initialZoomFactor: 0.5)
             return
         }
 
-        centerView()
+        if bounds.size != lastLayoutSize {
+            lastLayoutSize = bounds.size
+            centerView()
+        }
     }
 
-    
-    
     // MARK: - Layout
     private func rebuildPhysicalLayout() {
         guard !displays.isEmpty else {
@@ -204,6 +207,14 @@ class DisplayArrangementView: NSView {
                 physicalHeight / 2
 
             let saved = DisplayConfigurationStore.shared.configuration(for: display.persistentID)
+            // A saved position is kept by its center, so a display whose size changed
+            // (for example after being rotated) stays where it was.
+            var originX = physicalX
+            var originY = physicalY
+            if let saved {
+                originX = CGFloat(saved.xInches + saved.widthInches / 2) - physicalWidth / 2
+                originY = CGFloat(saved.yInches + saved.heightInches / 2) - physicalHeight / 2
+            }
             let physicalDisplay = PhysicalLayout.Display(
                 id: display.displayID, nickname: display.nickname,
                 persistentID: display.persistentID, colorHex: display.colorHex,
@@ -211,8 +222,8 @@ class DisplayArrangementView: NSView {
                 bezelTop: CGFloat(display.bezelTop), bezelBottom: CGFloat(display.bezelBottom),
                 bezelLeft: CGFloat(display.bezelLeft), bezelRight: CGFloat(display.bezelRight),
                 bezelColorHex: display.bezelColorHex, showBezel: display.showBezel, isLocked: display.isLocked,
-                x: CGFloat(saved?.xInches ?? Double(physicalX)),
-                y: CGFloat(saved?.yInches ?? Double(physicalY)),
+                x: originX,
+                y: originY,
                 width: physicalWidth, height: physicalHeight
             )
 
@@ -515,13 +526,20 @@ class DisplayArrangementView: NSView {
             .paragraphStyle: paragraphStyle,
             .foregroundColor: NSColor.black
         ]
+        // Long names wrap (narrow, vertical displays) and grow upward from the center line.
+        let nameWidth = max(rect.width - 16, 1)
+        let nameHeight = ceil((display.nickname as NSString).boundingRect(
+            with: CGSize(width: nameWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin],
+            attributes: nameAttributes
+        ).height)
         let nameRect = CGRect(
             x: rect.minX + 8,
             y: rect.midY + 10,
-            width: max(rect.width - 16, 1),
-            height: 20
+            width: nameWidth,
+            height: min(max(nameHeight, 20), max(rect.height / 2 - 10, 20))
         )
-        display.nickname.draw(in: nameRect, withAttributes: nameAttributes)
+        display.nickname.draw(with: nameRect, options: [.usesLineFragmentOrigin], attributes: nameAttributes)
 
         let sizeText = String(format: "%.1f × %.1f in", display.width, display.height)
         let sizeAttributes: [NSAttributedString.Key: Any] = [
@@ -722,67 +740,82 @@ class DisplayArrangementView: NSView {
     }
 
     // MARK: - Zoom to Fit
+    /// What Zoom to Fit and Center View frame, in physical inches: the selected
+    /// display, or all displays as a group (bezels included) when none is selected.
+    private func focusRect() -> CGRect? {
+        let targets: [PhysicalLayout.Display]
+        if let id = selectedDisplayID, let selected = physicalLayout.displays.first(where: { $0.id == id }) {
+            targets = [selected]
+        } else {
+            targets = physicalLayout.displays
+        }
+        let rects = targets.map(outerPhysicalRect)
+        guard var union = rects.first else { return nil }
+        for rect in rects.dropFirst() { union = union.union(rect) }
+        return union
+    }
+
+    // Space kept clear for the buttons along the bottom edge and a margin along the top.
+    private let focusMarginSides: CGFloat = 40
+    private let focusMarginTop: CGFloat = 40
+    private let focusMarginBottom: CGFloat = 60
+
     @objc func zoomToFit(
         initialZoomFactor: CGFloat = 1.0
     ) {
-        guard physicalLayout.width > 0,
-              physicalLayout.height > 0 else {
-            return
-        }
-                
-        let sideInset: CGFloat = 40
-        let topInset: CGFloat = 40
-        let bottomInset: CGFloat = 60
-
-        let availableWidth =
-            bounds.width - sideInset * 2
-
-        let availableHeight =
-            bounds.height - topInset - bottomInset
-
-        guard availableWidth > 0,
-              availableHeight > 0 else {
+        guard let focus = focusRect(),
+              focus.width > 0,
+              focus.height > 0 else {
             return
         }
 
-        let zoomX =
-            availableWidth /
-            (physicalLayout.width * basePointsPerInch)
+        let availableWidth = bounds.width - focusMarginSides * 2
+        let availableHeight = bounds.height - focusMarginTop - focusMarginBottom
+        guard availableWidth > 0, availableHeight > 0 else {
+            return
+        }
 
-        let zoomY =
-            availableHeight /
-            (physicalLayout.height * basePointsPerInch)
+        let fitZoom = min(
+            availableWidth / (focus.width * basePointsPerInch),
+            availableHeight / (focus.height * basePointsPerInch)
+        )
+        zoom = min(max(fitZoom * initialZoomFactor, 0.05), 10.0)
 
-        let fitZoom =
-            min(zoomX, zoomY)
-        
-        zoom = fitZoom * initialZoomFactor
-        
         centerView()
-        
     }
-    
+
     @objc func zoomToFitFromButton() {
         zoomToFit(initialZoomFactor: 1.0)
     }
 
     // MARK: - Center View
     @objc func centerView() {
-        let topInset: CGFloat = 60
-        let bottomInset: CGFloat = 40
-
-        let usableCenterY =
-            topInset +
-            (bounds.height - topInset - bottomInset) / 2
-
-        viewOffset = CGPoint(
+        let center = focusRect().map { CGPoint(x: $0.midX, y: $0.midY) } ?? .zero
+        let viewCenter = CGPoint(
             x: bounds.midX,
-            y: usableCenterY
+            y: focusMarginBottom + (bounds.height - focusMarginBottom - focusMarginTop) / 2
         )
-
+        // viewOffset is where physical (0, 0) lands in the view.
+        viewOffset = CGPoint(
+            x: viewCenter.x - center.x * pointsPerInch,
+            y: viewCenter.y - center.y * pointsPerInch
+        )
         needsDisplay = true
     }
-    
+
+    // MARK: - Refresh
+    /// Re-reads the connected displays from macOS, keeping the selection if it still exists.
+    func reloadDisplays() {
+        let previous = selectedDisplayID
+        displays = DisplayInfo.detectDisplays()
+        if let previous, !displays.contains(where: { $0.displayID == previous }) {
+            select(nil)
+        } else if previous != nil {
+            onSelectionChanged?(selectedDisplayInfo())
+        }
+        needsDisplay = true
+    }
+
     // MARK: - Mouse
     /// Selects a display or the reference image, or clears the selection.
     private func select(_ target: EditTarget?) {

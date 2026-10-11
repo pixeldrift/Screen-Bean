@@ -9,6 +9,7 @@ import CoreGraphics
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
+    private var mainView: DisplayArrangementView?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let mainMenu = NSMenu()
@@ -77,12 +78,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         buttonStack.spacing = 8
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
 
+        let refreshButton = NSButton(title: "Refresh Displays", target: self, action: #selector(refreshDisplays))
+        let settingsButton = NSButton(title: "Display Settings…", target: self, action: #selector(openDisplaySettings))
+        refreshButton.bezelStyle = .rounded
+        settingsButton.bezelStyle = .rounded
+        let systemButtonStack = NSStackView(views: [refreshButton, settingsButton])
+        systemButtonStack.orientation = .horizontal
+        systemButtonStack.spacing = 8
+        systemButtonStack.translatesAutoresizingMaskIntoConstraints = false
+        self.mainView = mainView
+
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
         mainView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(mainView)
         container.addSubview(sidebar)
         container.addSubview(buttonStack)
+        container.addSubview(systemButtonStack)
 
         NSLayoutConstraint.activate([
             mainView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -94,7 +106,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             sidebar.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             sidebar.widthAnchor.constraint(equalToConstant: 300),
             buttonStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
-            buttonStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12)
+            buttonStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
+            systemButtonStack.trailingAnchor.constraint(equalTo: mainView.trailingAnchor, constant: -12),
+            systemButtonStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12)
         ])
 
         mainView.displays = DisplayInfo.detectDisplays()
@@ -105,5 +119,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Re-reads the displays from macOS, e.g. after changing orientation in System Settings.
+    @objc private func refreshDisplays() {
+        mainView?.reloadDisplays()
+    }
+
+    @objc private func openDisplaySettings() {
+        // The Displays pane moved in macOS 13; fall back to the older identifier.
+        let urls = ["x-apple.systempreferences:com.apple.Displays-Settings.extension", "x-apple.systempreferences:com.apple.preference.displays"]
+        for string in urls {
+            if let url = URL(string: string), NSWorkspace.shared.open(url) { return }
+        }
     }
 }

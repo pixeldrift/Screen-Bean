@@ -57,6 +57,7 @@ final class DisplayInspectorView: NSView {
 
         nickname.placeholderString = "Custom monitor name"
         nickname.target = self; nickname.action = #selector(nameChanged)
+        nickname.delegate = ReturnCommitDelegate.shared
         detected.font = .systemFont(ofSize: 11); detected.textColor = .secondaryLabelColor
 
         // Inputs.
@@ -90,26 +91,25 @@ final class DisplayInspectorView: NSView {
             grid(cell("X-Pos", "inches", x), cell("Y-Pos", "inches", y))
         ])
 
-        // Bezel: size + uniform toggle, then either a slider or a cross of four sides.
-        let sizeCell = cell("Bezel Size", "inches", bezel)
-        sizeCell.widthAnchor.constraint(equalToConstant: 110).isActive = true
-        let sizeRow = NSStackView(views: [sizeCell, uniform])
-        sizeRow.alignment = .bottom; sizeRow.spacing = 12
+        // Bezel: a size caption with the Uniform toggle, then either one field and a slider
+        // or a cross of four sides, then colors and visibility.
+        let sizeCaption = ScrubLabel("Bezel Size", unit: "inches", input: bezel)
+        let sizeHeader = NSStackView(views: [sizeCaption, NSView(), uniform])
+        sizeHeader.distribution = .fill
         uniformSection = slider
-        let sideCells = [top, bottom, left, right].map { input -> NSView in
-            let name = input === top ? "Top" : input === bottom ? "Bottom" : input === left ? "Left" : "Right"
-            let c = cell(name, nil, input)
-            c.widthAnchor.constraint(equalToConstant: 100).isActive = true
+        // Side inputs are as wide as one column of the two-column grids above.
+        let columnWidth: CGFloat = 126
+        func sideCell(_ name: String, _ input: NumberInput) -> NSView {
+            let c = input.labeled(name, centered: true)
+            c.widthAnchor.constraint(equalToConstant: columnWidth).isActive = true
             return c
         }
-        let middle = NSStackView(views: [sideCells[2], sideCells[3]])
+        let middle = NSStackView(views: [sideCell("Left", left), sideCell("Right", right)])
         middle.spacing = 16
-        let cross = NSStackView(views: [sideCells[0], middle, sideCells[1]])
+        let cross = NSStackView(views: [sideCell("Top", top), middle, sideCell("Bottom", bottom)])
         cross.orientation = .vertical; cross.alignment = .centerX; cross.spacing = 6
         individualSection = cross
-        let bezelHeader = NSStackView(views: [sectionTitle("Bezel"), NSView(), showBezel])
-        bezelHeader.distribution = .fill
-        let bezelSection = stack([bezelHeader, sizeRow, uniformSection, individualSection, colorRow("Bezel Color", bezelColor)], spacing: 8)
+        let bezelSection = stack([sectionTitle("Bezel"), sizeHeader, bezel, uniformSection, individualSection, colorRow("Bezel Color", bezelColor), showBezel], spacing: 8)
         let appearance = section("Appearance", [colorRow("Display Color", displayColor)])
 
         let content = stack([header, stack([nickname, detected], spacing: 4), infoSection, divider(), dimensions, divider(), bezelSection, divider(), appearance], spacing: 12)
@@ -195,7 +195,7 @@ final class DisplayInspectorView: NSView {
         bezel.value = b; slider.doubleValue = b
         top.value = d.bezelTop; bottom.value = d.bezelBottom
         left.value = d.bezelLeft; right.value = d.bezelRight
-        uniformSection.isHidden = !d.uniformBezel; individualSection.isHidden = d.uniformBezel
+        bezel.isHidden = !d.uniformBezel; uniformSection.isHidden = !d.uniformBezel; individualSection.isHidden = d.uniformBezel
         displayColor.setColor(NSColor(displayHex: d.colorHex))
         bezelColor.setColor(NSColor(displayHex: d.bezelColorHex))
         showBezel.state = d.showBezel ? .on : .off

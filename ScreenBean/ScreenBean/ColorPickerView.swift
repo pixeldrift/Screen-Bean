@@ -50,6 +50,7 @@ final class ColorPickerView: NSView {
         for f in [hexField, redField, greenField, blueField] {
             f.font = small; f.isBezeled = true; f.bezelStyle = .roundedBezel
             f.target = self; f.action = #selector(fieldChanged(_:))
+            f.delegate = ReturnCommitDelegate.shared
         }
         let labels = ["R", "G", "B"].map { t -> NSTextField in
             let l = NSTextField(labelWithString: t); l.font = .systemFont(ofSize: 10); l.textColor = .secondaryLabelColor; return l

@@ -8,6 +8,19 @@
 
 import Cocoa
 
+/// Makes Return in a text field commit the value and release keyboard focus.
+final class ReturnCommitDelegate: NSObject, NSTextFieldDelegate {
+    static let shared = ReturnCommitDelegate()
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
+        control.validateEditing()
+        control.sendAction(control.action, to: control.target)
+        control.window?.makeFirstResponder(nil)
+        return true
+    }
+}
+
 final class NumberInput: NSView {
     /// Called with the new value after the user changes it.
     var onChange: ((Double) -> Void)?
@@ -38,6 +51,7 @@ final class NumberInput: NSView {
         field.isBezeled = true; field.bezelStyle = .roundedBezel
         field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         field.target = self; field.action = #selector(fieldChanged)
+        field.delegate = ReturnCommitDelegate.shared
         stepper.minValue = -100000; stepper.maxValue = 100000; stepper.increment = step
         stepper.valueWraps = false
         stepper.target = self; stepper.action = #selector(stepperChanged)
@@ -53,8 +67,10 @@ final class NumberInput: NSView {
     }
 
     /// This input under a scrubbable caption, e.g. "Width (inches)".
-    func labeled(_ text: String, unit: String? = nil) -> NSView {
-        let stack = NSStackView(views: [ScrubLabel(text, unit: unit, input: self), self])
+    func labeled(_ text: String, unit: String? = nil, centered: Bool = false) -> NSView {
+        let label = ScrubLabel(text, unit: unit, input: self)
+        if centered { label.alignment = .center }
+        let stack = NSStackView(views: [label, self])
         stack.orientation = .vertical; stack.alignment = .width; stack.spacing = 4
         return stack
     }
