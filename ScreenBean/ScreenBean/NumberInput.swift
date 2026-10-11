@@ -33,7 +33,7 @@ final class NumberInput: NSView {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         formatter.minimumFractionDigits = 1
-        formatter.maximumFractionDigits = 2
+        formatter.maximumFractionDigits = 4
         field.formatter = formatter
         field.isBezeled = true; field.bezelStyle = .roundedBezel
         field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
@@ -50,6 +50,13 @@ final class NumberInput: NSView {
             stepper.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
             stepper.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
+    }
+
+    /// This input under a scrubbable caption, e.g. "Width (inches)".
+    func labeled(_ text: String, unit: String? = nil) -> NSView {
+        let stack = NSStackView(views: [ScrubLabel(text, unit: unit, input: self), self])
+        stack.orientation = .vertical; stack.alignment = .width; stack.spacing = 4
+        return stack
     }
 
     /// Applies a drag or stepper change, respecting the minimum.
@@ -93,4 +100,11 @@ final class ScrubLabel: NSTextField {
         input.nudge(by: Double(x - lastX) * scrubScale)
         lastX = x
     }
+}
+
+/// Two equal-width columns, used for pairs of labeled inputs.
+func twoColumnGrid(_ a: NSView, _ b: NSView) -> NSStackView {
+    let stack = NSStackView(views: [a, b])
+    stack.distribution = .fillEqually; stack.spacing = 16; stack.alignment = .top
+    return stack
 }

@@ -150,3 +150,63 @@ final class ColorPickerView: NSView {
         onChange?(color)
     }
 }
+
+/// A swatch-and-chevron button that opens a `ColorPickerView` in a popover.
+final class ColorSwatchButton: NSButton {
+    var onChange: ((NSColor) -> Void)?
+    private(set) var color: NSColor = .systemTeal
+    private let picker = ColorPickerView()
+    private let popover = NSPopover()
+
+    override init(frame: NSRect) { super.init(frame: frame); build() }
+    required init?(coder: NSCoder) { super.init(coder: coder); build() }
+
+    private func build() {
+        title = ""
+        bezelStyle = .rounded
+        target = self; action = #selector(showPicker)
+        imagePosition = .imageTrailing
+        image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: "Choose color")
+        picker.frame = NSRect(x: 0, y: 0, width: 260, height: 180)
+        picker.onChange = { [weak self] color in
+            self?.setColor(color)
+            self?.onChange?(color)
+        }
+        let controller = NSViewController()
+        let holder = NSView(frame: NSRect(x: 0, y: 0, width: 284, height: 204))
+        picker.translatesAutoresizingMaskIntoConstraints = false
+        holder.addSubview(picker)
+        NSLayoutConstraint.activate([
+            picker.leadingAnchor.constraint(equalTo: holder.leadingAnchor, constant: 12),
+            picker.trailingAnchor.constraint(equalTo: holder.trailingAnchor, constant: -12),
+            picker.topAnchor.constraint(equalTo: holder.topAnchor, constant: 12),
+            picker.bottomAnchor.constraint(equalTo: holder.bottomAnchor, constant: -12)
+        ])
+        controller.view = holder
+        popover.contentViewController = controller
+        popover.behavior = .transient
+        widthAnchor.constraint(equalToConstant: 72).isActive = true
+    }
+
+    /// Updates the swatch (and the open picker) without notifying `onChange`.
+    func setColor(_ newColor: NSColor) {
+        color = newColor
+        if picker.color.displayHex != newColor.displayHex { picker.color = newColor }
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        // Paint the swatch inside the button, leaving room for the chevron.
+        let swatch = NSRect(x: bounds.minX + 8, y: bounds.minY + 5, width: bounds.width - 34, height: bounds.height - 10)
+        color.setFill()
+        NSBezierPath(roundedRect: swatch, xRadius: 3, yRadius: 3).fill()
+        NSColor.separatorColor.setStroke()
+        NSBezierPath(roundedRect: swatch, xRadius: 3, yRadius: 3).stroke()
+    }
+
+    @objc private func showPicker() {
+        guard isEnabled else { return }
+        popover.show(relativeTo: bounds, of: self, preferredEdge: .maxX)
+    }
+}

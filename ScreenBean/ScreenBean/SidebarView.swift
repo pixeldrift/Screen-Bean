@@ -10,7 +10,7 @@ import Cocoa
 
 final class SidebarView: NSView {
     let inspector = DisplayInspectorView()
-    let referenceImagePanel = ImageLayerPanel(title: "Reference Image")
+    let referenceImagePanel = ImageLayerPanel(title: "Reference Image", showsTransform: true)
     let wallpaperPanel = ImageLayerPanel(title: "Spanned Wallpaper")
     let exportImagesButton = NSButton(title: "Export Images", target: nil, action: nil)
     let applyWallpaperButton = NSButton(title: "Apply Wallpaper", target: nil, action: nil)

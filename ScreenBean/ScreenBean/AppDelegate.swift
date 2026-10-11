@@ -36,10 +36,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             case .wallpaper: change(&mainView.wallpaperLayer)
             }
         }
+        mainView.onReferenceFrameChanged = { [weak sidebar] frame in
+            store.saveFrame(frame, for: .referenceImage)
+            sidebar?.referenceImagePanel.showFrame(frame)
+        }
+        sidebar.referenceImagePanel.onFrameChanged = { [weak mainView] frame in
+            mainView?.referenceLayer.frame = frame
+            store.saveFrame(frame, for: .referenceImage)
+        }
         for (slot, panel) in layerPanels {
             let image = store.loadImage(slot), blend = store.loadBlend(slot)
             panel.restore(image: image, blend: blend)
-            setLayer(slot) { $0.image = image; $0.blend = ImageLayerBlend(value: blend) }
+            setLayer(slot) { $0.image = image; $0.blend = ImageLayerBlend(value: blend); $0.frame = store.loadFrame(slot) }
             panel.onImageChanged = { image, data in
                 store.saveImageData(data, for: slot)
                 setLayer(slot) { $0.image = image }

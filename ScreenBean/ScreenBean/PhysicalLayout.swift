@@ -29,6 +29,7 @@ struct PhysicalLayout {
         var bezelBottom: CGFloat = CGFloat(DisplayDefaults.bezelInches)
         var bezelLeft: CGFloat = CGFloat(DisplayDefaults.bezelInches)
         var bezelRight: CGFloat = CGFloat(DisplayDefaults.bezelInches)
+        var bezelColorHex: String = DisplayDefaults.bezelColorHex
         var showBezel: Bool = true
         var isLocked: Bool = false
 

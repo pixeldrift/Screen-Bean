@@ -23,15 +23,31 @@ class DisplayArrangementView: NSView {
 
     private var physicalLayout = PhysicalLayout()
 
-    /// An image drawn in the workspace, sized to the width of the arrangement.
-    /// Its blend sets the opacity and whether it draws below or above the displays.
+    /// An image drawn in the workspace. Its blend sets the opacity and whether it
+    /// draws below or above the displays. A layer with a frame sits at that spot in
+    /// the workspace; one without is sized to the width of the arrangement.
     struct ImageLayer {
         var image: NSImage?
         var blend = ImageLayerBlend(value: 0)
+        var frame: ImageFrame?
     }
 
-    /// Photo or plan drawn as a layout reference.
-    var referenceLayer = ImageLayer() { didSet { needsDisplay = true } }
+    /// Photo or plan drawn as a layout reference, independent of the displays.
+    var referenceLayer = ImageLayer() {
+        didSet {
+            if referenceLayer.image == nil {
+                referenceLayer.frame = nil
+                onReferenceFrameChanged?(nil)
+                if isReferenceImageSelected { isReferenceImageSelected = false }
+            } else if referenceLayer.frame == nil {
+                referenceLayer.frame = defaultReferenceFrame()
+                onReferenceFrameChanged?(referenceLayer.frame)
+            }
+            needsDisplay = true
+        }
+    }
+    /// Called when the reference image is moved or scaled in the workspace.
+    var onReferenceFrameChanged: ((ImageFrame?) -> Void)?
     /// One image spanned across the whole arrangement.
     var wallpaperLayer = ImageLayer() { didSet { needsDisplay = true } }
     private var imageLayers: [ImageLayer] { [referenceLayer, wallpaperLayer] }
@@ -47,14 +63,60 @@ class DisplayArrangementView: NSView {
     private var panStartPoint = CGPoint.zero
     private var panStartOffset = CGPoint.zero
     private var isPanning = false
-    private var draggingDisplayID: CGDirectDisplayID?
+    // Selection, hover and drag state for displays and the reference image.
+    private var isReferenceImageSelected = false
+    private var hoverTarget: EditTarget?
+    private var dragTarget: EditTarget?
+    private var dragMode = DragMode.move
     private var dragStartPoint = CGPoint.zero
-    private var dragStartDisplayOrigin = CGPoint.zero
+    private var dragStartRect = CGRect.zero
     private var hasInitializedView = false
     
 
     
     // MARK: - Setup
+
+    /// Something in the workspace that can be moved and resized.
+    private enum EditTarget: Equatable {
+        case display(CGDirectDisplayID)
+        case referenceImage
+    }
+
+    private enum DragMode {
+        case move
+        case resize(GrabHandle)
+    }
+
+    /// The eight dots around a selected or hovered item.
+    private enum GrabHandle: CaseIterable {
+        case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left
+
+        /// Position along the item's width and height, from 0 (min) to 1 (max).
+        var unit: CGPoint {
+            switch self {
+            case .topLeft: return CGPoint(x: 0, y: 1)
+            case .top: return CGPoint(x: 0.5, y: 1)
+            case .topRight: return CGPoint(x: 1, y: 1)
+            case .right: return CGPoint(x: 1, y: 0.5)
+            case .bottomRight: return CGPoint(x: 1, y: 0)
+            case .bottom: return CGPoint(x: 0.5, y: 0)
+            case .bottomLeft: return CGPoint(x: 0, y: 0)
+            case .left: return CGPoint(x: 0, y: 0.5)
+            }
+        }
+
+        var isCorner: Bool { unit.x != 0.5 && unit.y != 0.5 }
+    }
+
+    private let cornerHandleRadius: CGFloat = 6
+    private let edgeHandleRadius: CGFloat = 4
+    private let minimumItemSize: CGFloat = 0.5
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil))
+    }
 
     override func layout() {
         super.layout()
@@ -147,7 +209,7 @@ class DisplayArrangementView: NSView {
                 uniformBezel: display.uniformBezel,
                 bezelTop: CGFloat(display.bezelTop), bezelBottom: CGFloat(display.bezelBottom),
                 bezelLeft: CGFloat(display.bezelLeft), bezelRight: CGFloat(display.bezelRight),
-                showBezel: display.showBezel, isLocked: display.isLocked,
+                bezelColorHex: display.bezelColorHex, showBezel: display.showBezel, isLocked: display.isLocked,
                 x: CGFloat(saved?.xInches ?? Double(physicalX)),
                 y: CGFloat(saved?.yInches ?? Double(physicalY)),
                 width: physicalWidth, height: physicalHeight
@@ -214,25 +276,41 @@ class DisplayArrangementView: NSView {
             )
         }
         for layer in imageLayers where layer.blend.aboveDisplays { drawImageLayer(layer) }
+        var withHandles: [EditTarget] = []
+        for target in [currentSelection, hoverTarget].compactMap({ $0 }) where !withHandles.contains(target) {
+            withHandles.append(target)
+            drawHandles(for: target, in: context)
+        }
+    }
     }
 
     // MARK: - Image Layers
-    /// Draws an image layer, anchored to the arrangement's top-left corner
-    /// and scaled to the arrangement's width.
-    private func drawImageLayer(_ layer: ImageLayer) {
-        guard let image = layer.image,
-              layer.blend.opacity > 0,
-              image.size.width > 0, image.size.height > 0,
-              physicalLayout.width > 0 else { return }
-        let width = physicalLayout.width
-        let height = width * image.size.height / image.size.width
-        let rect = CGRect(
-            x: physicalLayout.minX * pointsPerInch + viewOffset.x,
-            y: physicalLayout.minY * pointsPerInch + viewOffset.y,
-            width: width * pointsPerInch,
-            height: height * pointsPerInch
+    /// Where an image layer sits, in physical inches. Layers without a frame
+    /// are anchored to the arrangement's corner at the arrangement's width.
+    private func physicalRect(of layer: ImageLayer) -> CGRect? {
+        guard let image = layer.image, image.size.width > 0, image.size.height > 0 else { return nil }
+        let aspect = image.size.height / image.size.width
+        if let frame = layer.frame {
+            let height = CGFloat(frame.width) * aspect
+            return CGRect(x: CGFloat(frame.centerX - frame.width / 2), y: CGFloat(frame.centerY) - height / 2, width: CGFloat(frame.width), height: height)
+        }
+        guard physicalLayout.width > 0 else { return nil }
+        return CGRect(x: physicalLayout.minX, y: physicalLayout.minY, width: physicalLayout.width, height: physicalLayout.width * aspect)
+    }
+
+    /// New reference images start at the arrangement's width, centered on it.
+    private func defaultReferenceFrame() -> ImageFrame {
+        guard physicalLayout.width > 0 else { return ImageFrame(centerX: 0, centerY: 0, width: 40) }
+        return ImageFrame(
+            centerX: Double((physicalLayout.minX + physicalLayout.maxX) / 2),
+            centerY: Double((physicalLayout.minY + physicalLayout.maxY) / 2),
+            width: Double(physicalLayout.width)
         )
-        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: CGFloat(layer.blend.opacity), respectFlipped: true, hints: nil)
+    }
+
+    private func drawImageLayer(_ layer: ImageLayer) {
+        guard let image = layer.image, layer.blend.opacity > 0, let physical = physicalRect(of: layer) else { return }
+        image.draw(in: viewRect(forPhysical: physical), from: .zero, operation: .sourceOver, fraction: CGFloat(layer.blend.opacity), respectFlipped: true, hints: nil)
     }
 
     // MARK: - Grid
@@ -356,18 +434,17 @@ class DisplayArrangementView: NSView {
     ) {
         // Bezel thickness is stored in physical inches and scales with the canvas.
         let scale = pointsPerInch
-        func bezel(_ value: CGFloat) -> CGFloat { display.showBezel ? max(0, value) * scale : 0 }
-        let top = bezel(display.bezelTop)
-        let bottom = bezel(display.uniformBezel ? display.bezelTop : display.bezelBottom)
-        let left = bezel(display.uniformBezel ? display.bezelTop : display.bezelLeft)
-        let right = bezel(display.uniformBezel ? display.bezelTop : display.bezelRight)
+        let insets = bezelInsets(display)
+        let top = insets.top * scale, bottom = insets.bottom * scale
+        let left = insets.left * scale, right = insets.right * scale
         let outerRect = CGRect(
             x: rect.minX - left,
             y: rect.minY - bottom,
             width: rect.width + left + right,
             height: rect.height + top + bottom
         )
-        let frameColor = NSColor(calibratedWhite: 0.30, alpha: 1)
+        let bezelColor = NSColor(displayHex: display.bezelColorHex)
+        let frameColor = bezelColor
 
         // Draw shadow first so it falls outside the monitor's physical frame.
         context.saveGState()
@@ -383,7 +460,7 @@ class DisplayArrangementView: NSView {
         // Bezel frame: a soft top-to-bottom gradient with a raised bevel edge.
         if display.showBezel, let frameGradient = CGGradient(
             colorsSpace: CGColorSpaceCreateDeviceRGB(),
-            colors: [NSColor(calibratedWhite: 0.38, alpha: 1).cgColor, NSColor(calibratedWhite: 0.20, alpha: 1).cgColor] as CFArray,
+            colors: [(bezelColor.blended(withFraction: 0.13, of: .white) ?? bezelColor).cgColor, (bezelColor.blended(withFraction: 0.31, of: .black) ?? bezelColor).cgColor] as CFArray,
             locations: [0, 1]
         ) {
             context.saveGState()
@@ -428,12 +505,6 @@ class DisplayArrangementView: NSView {
 
         // The panel sits slightly recessed into the frame.
         drawBevel(in: context, rect: rect, raised: false, width: 2)
-
-        if isSelected {
-            context.setStrokeColor(NSColor.controlAccentColor.cgColor)
-            context.setLineWidth(2)
-            context.stroke(outerRect.insetBy(dx: -1, dy: -1))
-        }
 
         drawLockIcon(for: display, in: rect, isSelected: isSelected)
 
@@ -503,6 +574,153 @@ class DisplayArrangementView: NSView {
         symbol.draw(in: lockIconRect(in: rect))
     }
 
+    // MARK: - Geometry
+    private func viewToPhysical(_ point: CGPoint) -> CGPoint {
+        CGPoint(x: (point.x - viewOffset.x) / pointsPerInch, y: (point.y - viewOffset.y) / pointsPerInch)
+    }
+
+    private func viewRect(forPhysical rect: CGRect) -> CGRect {
+        CGRect(x: rect.minX * pointsPerInch + viewOffset.x, y: rect.minY * pointsPerInch + viewOffset.y, width: rect.width * pointsPerInch, height: rect.height * pointsPerInch)
+    }
+
+    /// Bezel thickness on each side of a display, in inches.
+    private func bezelInsets(_ display: PhysicalLayout.Display) -> (top: CGFloat, bottom: CGFloat, left: CGFloat, right: CGFloat) {
+        guard display.showBezel else { return (0, 0, 0, 0) }
+        let top = max(0, display.bezelTop)
+        guard !display.uniformBezel else { return (top, top, top, top) }
+        return (top, max(0, display.bezelBottom), max(0, display.bezelLeft), max(0, display.bezelRight))
+    }
+
+    /// A display's footprint including its bezel, in physical inches.
+    private func outerPhysicalRect(_ display: PhysicalLayout.Display) -> CGRect {
+        let i = bezelInsets(display)
+        return CGRect(x: display.x - i.left, y: display.y - i.bottom, width: display.width + i.left + i.right, height: display.height + i.top + i.bottom)
+    }
+
+    private func physicalOuterRect(of target: EditTarget) -> CGRect? {
+        switch target {
+        case .display(let id):
+            return physicalLayout.displays.first(where: { $0.id == id }).map(outerPhysicalRect)
+        case .referenceImage:
+            return physicalRect(of: referenceLayer)
+        }
+    }
+
+    private func isEditable(_ target: EditTarget) -> Bool {
+        switch target {
+        case .display(let id): return physicalLayout.displays.first(where: { $0.id == id })?.isLocked == false
+        case .referenceImage: return referenceLayer.image != nil
+        }
+    }
+
+    private var currentSelection: EditTarget? {
+        if let id = selectedDisplayID { return .display(id) }
+        return isReferenceImageSelected ? .referenceImage : nil
+    }
+
+    /// Targets from front to back, following the reference image's layer setting.
+    private func targetsFrontToBack() -> [EditTarget] {
+        let displayTargets = physicalLayout.displays.reversed().map { EditTarget.display($0.id) }
+        guard referenceLayer.image != nil, referenceLayer.blend.opacity > 0 else { return displayTargets }
+        return referenceLayer.blend.aboveDisplays ? [.referenceImage] + displayTargets : displayTargets + [.referenceImage]
+    }
+
+    // MARK: - Grab Handles
+    private func handleCenter(_ handle: GrabHandle, in rect: CGRect) -> CGPoint {
+        CGPoint(x: rect.minX + handle.unit.x * rect.width, y: rect.minY + handle.unit.y * rect.height)
+    }
+
+    private func handle(at point: CGPoint, in rect: CGRect) -> GrabHandle? {
+        // Corners first so they win where an edge dot is close by.
+        let ordered = GrabHandle.allCases.sorted { $0.isCorner && !$1.isCorner }
+        return ordered.first { handle in
+            let c = handleCenter(handle, in: rect)
+            let r = (handle.isCorner ? cornerHandleRadius : edgeHandleRadius) + 3
+            return hypot(point.x - c.x, point.y - c.y) <= r
+        }
+    }
+
+    private func handleColor(for target: EditTarget) -> NSColor {
+        if case .display(let id) = target, let d = physicalLayout.displays.first(where: { $0.id == id }) { return NSColor(displayHex: d.colorHex) }
+        return .controlAccentColor
+    }
+
+    /// An outline in the item's color with dots at the corners and edge midpoints.
+    private func drawHandles(for target: EditTarget, in context: CGContext) {
+        guard isEditable(target), let physical = physicalOuterRect(of: target) else { return }
+        let rect = viewRect(forPhysical: physical)
+        let color = handleColor(for: target)
+        context.saveGState()
+        context.setStrokeColor(color.cgColor)
+        context.setLineWidth(2)
+        context.stroke(rect)
+        for handle in GrabHandle.allCases {
+            let c = handleCenter(handle, in: rect)
+            let r = handle.isCorner ? cornerHandleRadius : edgeHandleRadius
+            let dot = CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)
+            context.setFillColor(color.cgColor)
+            context.fillEllipse(in: dot)
+            context.setStrokeColor(NSColor.white.withAlphaComponent(0.85).cgColor)
+            context.setLineWidth(1.5)
+            context.strokeEllipse(in: dot)
+        }
+        context.restoreGState()
+    }
+
+    /// The new rectangle when `handle` is dragged to `point`. Corners keep the
+    /// rectangle's proportions; edges stretch one side unless `keepAspect` is set.
+    private func resizedRect(_ r: CGRect, handle: GrabHandle, to p: CGPoint, keepAspect: Bool, minSize: CGSize) -> CGRect {
+        let u = handle.unit
+        // The fixed point opposite the handle.
+        let anchor = CGPoint(x: r.minX + (1 - u.x) * r.width, y: r.minY + (1 - u.y) * r.height)
+        var w = r.width, h = r.height
+        if u.x != 0.5 { w = max(minSize.width, u.x == 0 ? anchor.x - p.x : p.x - anchor.x) }
+        if u.y != 0.5 { h = max(minSize.height, u.y == 0 ? anchor.y - p.y : p.y - anchor.y) }
+        let aspect = r.width / max(r.height, 0.0001)
+        if handle.isCorner {
+            let scale = max(w / r.width, h / r.height)
+            w = r.width * scale; h = r.height * scale
+        } else if keepAspect {
+            if u.x != 0.5 { h = w / aspect } else { w = h * aspect }
+        }
+        let x = u.x == 0 ? anchor.x - w : (u.x == 1 ? anchor.x : r.midX - w / 2)
+        let y = u.y == 0 ? anchor.y - h : (u.y == 1 ? anchor.y : r.midY - h / 2)
+        return CGRect(x: x, y: y, width: w, height: h)
+    }
+
+    // MARK: - Hit Testing
+    /// What is under `point`: a handle of the selected or hovered item, or an item's body.
+    private func hitTest(_ point: CGPoint) -> (target: EditTarget, handle: GrabHandle?)? {
+        for target in [currentSelection, hoverTarget].compactMap({ $0 }) where isEditable(target) {
+            if let physical = physicalOuterRect(of: target), let handle = handle(at: point, in: viewRect(forPhysical: physical)) {
+                return (target, handle)
+            }
+        }
+        for target in targetsFrontToBack() {
+            if let physical = physicalOuterRect(of: target), viewRect(forPhysical: physical).contains(point) { return (target, nil) }
+        }
+        return nil
+    }
+
+    /// Like `hitTest`, but forgiving enough to keep handles that hang outside an item's edge visible.
+    private func hoverTest(_ point: CGPoint) -> EditTarget? {
+        if let hit = hitTest(point) { return hit.target }
+        let slop = cornerHandleRadius + 3
+        return targetsFrontToBack().first { target in
+            guard isEditable(target), let physical = physicalOuterRect(of: target) else { return false }
+            return viewRect(forPhysical: physical).insetBy(dx: -slop, dy: -slop).contains(point)
+        }
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let target = hoverTest(convert(event.locationInWindow, from: nil))
+        if target != hoverTarget { hoverTarget = target; needsDisplay = true }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if hoverTarget != nil { hoverTarget = nil; needsDisplay = true }
+    }
+
     // MARK: - Zoom to Fit
     @objc func zoomToFit(
         initialZoomFactor: CGFloat = 1.0
@@ -565,71 +783,75 @@ class DisplayArrangementView: NSView {
         needsDisplay = true
     }
     
-    // MARK: - Mouse Pan
+    // MARK: - Mouse
+    /// Selects a display or the reference image, or clears the selection.
+    private func select(_ target: EditTarget?) {
+        selectedDisplayID = nil
+        isReferenceImageSelected = false
+        switch target {
+        case .display(let id): selectedDisplayID = id
+        case .referenceImage: isReferenceImageSelected = true
+        case nil: break
+        }
+        onSelectionChanged?(selectedDisplayInfo())
+        needsDisplay = true
+    }
+
     override func mouseDown(
         with event: NSEvent
     ) {
-        let point = convert(
-            event.locationInWindow,
-            from: nil
-        )
+        let point = convert(event.locationInWindow, from: nil)
 
-        // Clicking a display selects it. Clicking empty workspace
-        // clears the selection and begins panning.
-        if let hit = physicalLayout.displays.reversed().first(where: {
-            physicalRectToView($0).contains(point)
+        // The lock icon is only visible (and clickable) on locked or selected displays.
+        if let locked = physicalLayout.displays.reversed().first(where: {
+            ($0.isLocked || $0.id == selectedDisplayID) && lockIconRect(in: physicalRectToView($0)).contains(point)
         }) {
-            // The lock icon is only visible (and clickable) on locked or already-selected displays.
-            let lockIsVisible = hit.isLocked || selectedDisplayID == hit.id
-            selectedDisplayID = hit.id
-            onSelectionChanged?(
-                displays.first(where: { $0.displayID == hit.id })
-            )
-            isPanning = false
-            if lockIsVisible, lockIconRect(in: physicalRectToView(hit)).contains(point) {
-                updateSelectedDisplay(DisplayEdit(isLocked: !hit.isLocked))
-                return
-            }
-            if hit.isLocked { needsDisplay = true; return }
-            draggingDisplayID = hit.id
-            dragStartPoint = point
-            if let selectedLayoutDisplay = physicalLayout.displays.first(where: { $0.id == hit.id }) {
-                dragStartDisplayOrigin = CGPoint(
-                    x: selectedLayoutDisplay.x,
-                    y: selectedLayoutDisplay.y
-                )
-            }
-            needsDisplay = true
+            select(.display(locked.id))
+            updateSelectedDisplay(DisplayEdit(isLocked: !locked.isLocked))
             return
         }
 
-        selectedDisplayID = nil
-        onSelectionChanged?(nil)
+        // Clicking an item selects it and starts moving it, or resizing it from a handle.
+        // Clicking empty workspace clears the selection and begins panning.
+        if let hit = hitTest(point) {
+            select(hit.target)
+            isPanning = false
+            guard isEditable(hit.target), let start = physicalOuterRect(of: hit.target) else { return }
+            dragTarget = hit.target
+            dragMode = hit.handle.map(DragMode.resize) ?? .move
+            dragStartPoint = point
+            dragStartRect = start
+            return
+        }
+
+        select(nil)
         panStartPoint = point
         panStartOffset = viewOffset
         isPanning = true
-        needsDisplay = true
     }
+
     override func mouseDragged(
         with event: NSEvent
     ) {
         let currentPoint = convert(event.locationInWindow, from: nil)
 
-        if let draggingDisplayID {
-            let dx = (currentPoint.x - dragStartPoint.x) / pointsPerInch
-            let dy = (currentPoint.y - dragStartPoint.y) / pointsPerInch
-
-            guard let index = physicalLayout.displays.firstIndex(where: { $0.id == draggingDisplayID }) else {
-                return
+        if let dragTarget {
+            let rect: CGRect
+            switch dragMode {
+            case .move:
+                rect = dragStartRect.offsetBy(
+                    dx: (currentPoint.x - dragStartPoint.x) / pointsPerInch,
+                    dy: (currentPoint.y - dragStartPoint.y) / pointsPerInch
+                )
+            case .resize(let handle):
+                var minSize = CGSize(width: minimumItemSize, height: minimumItemSize)
+                if case .display(let id) = dragTarget, let d = physicalLayout.displays.first(where: { $0.id == id }) {
+                    let i = bezelInsets(d)
+                    minSize = CGSize(width: i.left + i.right + minimumItemSize, height: i.top + i.bottom + minimumItemSize)
+                }
+                rect = resizedRect(dragStartRect, handle: handle, to: viewToPhysical(currentPoint), keepAspect: dragTarget == .referenceImage, minSize: minSize)
             }
-
-            physicalLayout.displays[index].x = dragStartDisplayOrigin.x + dx
-            physicalLayout.displays[index].y = dragStartDisplayOrigin.y + dy
-            syncSelectedLayoutToDisplay(save: false)
-            needsDisplay = true
-            if let info = selectedDisplayInfo() {
-                onDisplayValuesChanged?(info, physicalLayout.displays[index].x, physicalLayout.displays[index].y)
-            }
+            apply(rect, to: dragTarget)
             return
         }
 
@@ -645,19 +867,41 @@ class DisplayArrangementView: NSView {
         )
         needsDisplay = true
     }
+
+    /// Moves or resizes an item so its footprint (including bezel for displays) is `rect`.
+    private func apply(_ rect: CGRect, to target: EditTarget) {
+        switch target {
+        case .referenceImage:
+            referenceLayer.frame = ImageFrame(centerX: Double(rect.midX), centerY: Double(rect.midY), width: Double(rect.width))
+            onReferenceFrameChanged?(referenceLayer.frame)
+        case .display(let id):
+            guard let j = physicalLayout.displays.firstIndex(where: { $0.id == id }),
+                  let i = displays.firstIndex(where: { $0.displayID == id }) else { return }
+            let insets = bezelInsets(physicalLayout.displays[j])
+            let panel = CGRect(x: rect.minX + insets.left, y: rect.minY + insets.bottom, width: rect.width - insets.left - insets.right, height: rect.height - insets.top - insets.bottom)
+            physicalLayout.displays[j].x = panel.minX
+            physicalLayout.displays[j].y = panel.minY
+            physicalLayout.displays[j].width = panel.width
+            physicalLayout.displays[j].height = panel.height
+            suppressDisplayRebuild = true
+            displays[i].physicalWidthInches = Double(panel.width)
+            displays[i].physicalHeightInches = Double(panel.height)
+            suppressDisplayRebuild = false
+            syncSelectedLayoutToDisplay(save: false)
+            needsDisplay = true
+            onDisplayValuesChanged?(displays[i], physicalLayout.displays[j].centerX, physicalLayout.displays[j].centerY)
+        }
+    }
+
     override func mouseUp(
         with event: NSEvent
     ) {
         isPanning = false
-        if draggingDisplayID != nil {
+        if case .display? = dragTarget {
             syncSelectedLayoutToDisplay(save: true)
-            if let info = selectedDisplayInfo(), let item = physicalLayout.displays.first(where: { $0.id == info.displayID }) {
-                onDisplayValuesChanged?(info, item.x, item.y)
-            }
         }
-        draggingDisplayID = nil
+        dragTarget = nil
     }
-    
 
     func selectedDisplayInfo() -> DisplayInfo? {
         guard let id = selectedDisplayID else { return nil }
@@ -666,7 +910,7 @@ class DisplayArrangementView: NSView {
 
     func selectedPosition() -> (x: CGFloat, y: CGFloat)? {
         guard let id = selectedDisplayID, let item = physicalLayout.displays.first(where: { $0.id == id }) else { return nil }
-        return (item.x, item.y)
+        return (item.centerX, item.centerY)
     }
 
     func updateSelectedDisplay(_ edit: DisplayEdit) {
@@ -675,11 +919,14 @@ class DisplayArrangementView: NSView {
         if displays[i].isLocked && edit.isLocked == nil { return }
         suppressDisplayRebuild = true
         if let nickname = edit.nickname, !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { displays[i].nickname = nickname; physicalLayout.displays[j].nickname = nickname }
-        if let width = edit.width, width > 0.1 { displays[i].physicalWidthInches = width; physicalLayout.displays[j].width = width }
-        if let height = edit.height, height > 0.1 { displays[i].physicalHeightInches = height; physicalLayout.displays[j].height = height }
-        if let x = edit.x { physicalLayout.displays[j].x = x }
-        if let y = edit.y { physicalLayout.displays[j].y = y }
+        // Position is the display's center, so resizing grows it evenly around that point.
+        let center = CGPoint(x: physicalLayout.displays[j].centerX, y: physicalLayout.displays[j].centerY)
+        if let width = edit.width, width > 0.1 { displays[i].physicalWidthInches = width; physicalLayout.displays[j].width = CGFloat(width) }
+        if let height = edit.height, height > 0.1 { displays[i].physicalHeightInches = height; physicalLayout.displays[j].height = CGFloat(height) }
+        physicalLayout.displays[j].x = (edit.x.map { CGFloat($0) } ?? center.x) - physicalLayout.displays[j].width / 2
+        physicalLayout.displays[j].y = (edit.y.map { CGFloat($0) } ?? center.y) - physicalLayout.displays[j].height / 2
         if let color = edit.color { displays[i].colorHex = color.displayHex; physicalLayout.displays[j].colorHex = color.displayHex }
+        if let bezelColor = edit.bezelColor { displays[i].bezelColorHex = bezelColor.displayHex; physicalLayout.displays[j].bezelColorHex = bezelColor.displayHex }
         if let uniformBezel = edit.uniformBezel { displays[i].uniformBezel = uniformBezel; physicalLayout.displays[j].uniformBezel = uniformBezel }
         if let bezelTop = edit.bezelTop { displays[i].bezelTop = bezelTop; physicalLayout.displays[j].bezelTop = CGFloat(bezelTop) }
         if let bezelBottom = edit.bezelBottom { displays[i].bezelBottom = bezelBottom; physicalLayout.displays[j].bezelBottom = CGFloat(bezelBottom) }
@@ -690,7 +937,7 @@ class DisplayArrangementView: NSView {
         suppressDisplayRebuild = false
         syncSelectedLayoutToDisplay(save: true)
         needsDisplay = true
-        onDisplayValuesChanged?(displays[i], physicalLayout.displays[j].x, physicalLayout.displays[j].y)
+        onDisplayValuesChanged?(displays[i], physicalLayout.displays[j].centerX, physicalLayout.displays[j].centerY)
     }
 
     private func syncSelectedLayoutToDisplay(save: Bool) {
@@ -702,7 +949,7 @@ class DisplayArrangementView: NSView {
         configuration.uniformBezel = displays[i].uniformBezel
         configuration.bezelTop = displays[i].bezelTop; configuration.bezelBottom = displays[i].bezelBottom
         configuration.bezelLeft = displays[i].bezelLeft; configuration.bezelRight = displays[i].bezelRight
-        configuration.showBezel = displays[i].showBezel; configuration.isLocked = displays[i].isLocked
+        configuration.bezelColorHex = displays[i].bezelColorHex; configuration.showBezel = displays[i].showBezel; configuration.isLocked = displays[i].isLocked
         if save { DisplayConfigurationStore.shared.save(configuration) }
     }
 

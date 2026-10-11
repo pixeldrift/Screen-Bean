@@ -14,12 +14,22 @@ enum ImageLayerSlot: String, CaseIterable {
     case wallpaper
 }
 
+/// Where an image layer sits in the workspace, in physical inches.
+/// Height follows from the image's aspect ratio.
+struct ImageFrame: Codable, Equatable {
+    var centerX: Double
+    var centerY: Double
+    var width: Double
+}
+
 final class ImageLayerStore {
     static let shared = ImageLayerStore()
     private let defaults = UserDefaults.standard
     private init() {}
 
     private func blendKey(_ slot: ImageLayerSlot) -> String { "ScreenBean.ImageLayer.\(slot.rawValue).blend" }
+
+    private func frameKey(_ slot: ImageLayerSlot) -> String { "ScreenBean.ImageLayer.\(slot.rawValue).frame" }
 
     private func fileURL(_ slot: ImageLayerSlot) -> URL? {
         guard let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
@@ -42,6 +52,16 @@ final class ImageLayerStore {
         } else {
             try? FileManager.default.removeItem(at: url)
         }
+    }
+
+    func loadFrame(_ slot: ImageLayerSlot) -> ImageFrame? {
+        guard let data = defaults.data(forKey: frameKey(slot)) else { return nil }
+        return try? JSONDecoder().decode(ImageFrame.self, from: data)
+    }
+
+    func saveFrame(_ frame: ImageFrame?, for slot: ImageLayerSlot) {
+        if let frame, let data = try? JSONEncoder().encode(frame) { defaults.set(data, forKey: frameKey(slot)) }
+        else { defaults.removeObject(forKey: frameKey(slot)) }
     }
 
     func loadBlend(_ slot: ImageLayerSlot) -> Double {

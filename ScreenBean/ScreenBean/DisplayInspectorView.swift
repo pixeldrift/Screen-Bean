@@ -22,8 +22,8 @@ final class DisplayInspectorView: NSView {
     private let bottom = NumberInput()
     private let left = NumberInput()
     private let right = NumberInput()
-    private let swatch = NSBox()
-    private let picker = ColorPickerView()
+    private let displayColor = ColorSwatchButton()
+    private let bezelColor = ColorSwatchButton()
     private let showBezel = NSButton(checkboxWithTitle: "Show bezel", target: nil, action: nil)
     private let resolution = NSTextField(labelWithString: "—")
     private let ppi = NSTextField(labelWithString: "—")
@@ -32,6 +32,7 @@ final class DisplayInspectorView: NSView {
     private var hasDisplay = false
     private var uniformSection: NSView!
     private var individualSection: NSView!
+    private var showsBezel = true
 
     override init(frame: NSRect) { super.init(frame: frame); build() }
     required init?(coder: NSCoder) { super.init(coder: coder); build() }
@@ -74,34 +75,43 @@ final class DisplayInspectorView: NSView {
         uniform.target = self; uniform.action = #selector(uniformChanged)
         slider.target = self; slider.action = #selector(sliderChanged)
         showBezel.target = self; showBezel.action = #selector(showBezelChanged)
-        picker.onChange = { [weak self] color in self?.swatch.fillColor = color; self?.emit(DisplayEdit(color: color)) }
-        swatch.boxType = .custom; swatch.cornerRadius = 4; swatch.borderWidth = 1
-        swatch.borderColor = .separatorColor; swatch.titlePosition = .noTitle
-        swatch.translatesAutoresizingMaskIntoConstraints = false
-        swatch.widthAnchor.constraint(equalToConstant: 56).isActive = true
-        swatch.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        displayColor.onChange = { [weak self] in self?.emit(DisplayEdit(color: $0)) }
+        bezelColor.onChange = { [weak self] in self?.emit(DisplayEdit(bezelColor: $0)) }
+        detected.font = .systemFont(ofSize: 10)
 
         // Sections.
+        let infoSection = stack([
+            grid(valueCell("Native Resolution", resolution), valueCell("Pixel Density", ppi)),
+            valueCell("Display Role", role)
+        ], spacing: 8)
         let dimensions = section("Dimensions & Position", [
             grid(cell("Width", "inches", width), cell("Height", "inches", height)),
             grid(cell("X-Pos", "inches", x), cell("Y-Pos", "inches", y))
         ])
-        uniformSection = stack([cell("Bezel Size", "inches", bezel), slider], spacing: 6)
-        individualSection = stack([
-            caption("Individual Bezel Sizes", "inches"),
-            grid(cell("Top", nil, top), cell("Bottom", nil, bottom)),
-            grid(cell("Left", nil, left), cell("Right", nil, right))
-        ], spacing: 6)
-        let bezelHeader = NSStackView(views: [sectionTitle("Bezel"), NSView(), uniform])
-        bezelHeader.distribution = .fill
-        let bezelSection = stack([bezelHeader, uniformSection, individualSection], spacing: 8)
-        let colorRow = NSStackView(views: [NSTextField(labelWithString: "Display Color"), swatch])
-        colorRow.spacing = 8
-        let appearance = stack([sectionTitle("Appearance"), colorRow, picker], spacing: 8)
-        let frameSection = section("Monitor Frame", [showBezel])
-        let info = section("Detected", [valueRow("Resolution", resolution), valueRow("Pixel density", ppi), valueRow("Display role", role)])
 
-        let content = stack([header, stack([nickname, detected], spacing: 4), divider(), dimensions, divider(), bezelSection, divider(), appearance, divider(), frameSection, divider(), info], spacing: 12)
+        // Bezel: size + uniform toggle, then either a slider or a cross of four sides.
+        let sizeCell = cell("Bezel Size", "inches", bezel)
+        sizeCell.widthAnchor.constraint(equalToConstant: 110).isActive = true
+        let sizeRow = NSStackView(views: [sizeCell, uniform])
+        sizeRow.alignment = .bottom; sizeRow.spacing = 12
+        uniformSection = slider
+        let sideCells = [top, bottom, left, right].map { input -> NSView in
+            let name = input === top ? "Top" : input === bottom ? "Bottom" : input === left ? "Left" : "Right"
+            let c = cell(name, nil, input)
+            c.widthAnchor.constraint(equalToConstant: 100).isActive = true
+            return c
+        }
+        let middle = NSStackView(views: [sideCells[2], sideCells[3]])
+        middle.spacing = 16
+        let cross = NSStackView(views: [sideCells[0], middle, sideCells[1]])
+        cross.orientation = .vertical; cross.alignment = .centerX; cross.spacing = 6
+        individualSection = cross
+        let bezelHeader = NSStackView(views: [sectionTitle("Bezel"), NSView(), showBezel])
+        bezelHeader.distribution = .fill
+        let bezelSection = stack([bezelHeader, sizeRow, uniformSection, individualSection, colorRow("Bezel Color", bezelColor)], spacing: 8)
+        let appearance = section("Appearance", [colorRow("Display Color", displayColor)])
+
+        let content = stack([header, stack([nickname, detected], spacing: 4), infoSection, divider(), dimensions, divider(), bezelSection, divider(), appearance], spacing: 12)
         content.translatesAutoresizingMaskIntoConstraints = false
 
         let document = FlippedView()
@@ -148,20 +158,17 @@ final class DisplayInspectorView: NSView {
         return f
     }
     private func divider() -> NSBox { let b = NSBox(); b.boxType = .separator; return b }
-    /// A scrubbable caption above a number input.
-    private func cell(_ label: String, _ unit: String?, _ input: NumberInput) -> NSView {
-        let l = ScrubLabel(label, unit: unit, input: input)
-        return stack([l, input], spacing: 4)
-    }
-    private func grid(_ a: NSView, _ b: NSView) -> NSStackView {
-        let s = NSStackView(views: [a, b])
-        s.distribution = .fillEqually; s.spacing = 16; s.alignment = .top
-        return s
-    }
-    private func valueRow(_ label: String, _ value: NSTextField) -> NSView {
-        let l = NSTextField(labelWithString: label); l.font = .systemFont(ofSize: 11); l.textColor = .secondaryLabelColor
-        value.font = .systemFont(ofSize: 12)
+    private func cell(_ label: String, _ unit: String?, _ input: NumberInput) -> NSView { input.labeled(label, unit: unit) }
+    private func grid(_ a: NSView, _ b: NSView) -> NSStackView { twoColumnGrid(a, b) }
+    private func valueCell(_ label: String, _ value: NSTextField) -> NSView {
+        let l = NSTextField(labelWithString: label); l.font = .systemFont(ofSize: 11)
+        value.font = .systemFont(ofSize: 12); value.textColor = .secondaryLabelColor
         return stack([l, value], spacing: 2)
+    }
+    private func colorRow(_ label: String, _ button: ColorSwatchButton) -> NSView {
+        let row = NSStackView(views: [NSTextField(labelWithString: label), button])
+        row.spacing = 8
+        return row
     }
 
     // MARK: - State
@@ -169,7 +176,7 @@ final class DisplayInspectorView: NSView {
     func refresh(_ d: DisplayInfo?, x px: CGFloat, y py: CGFloat) {
         guard let d else {
             hasDisplay = false
-            nickname.stringValue = ""; detected.stringValue = "Select a monitor to edit properties"
+            nickname.stringValue = ""; detected.stringValue = ""
             for input in [width, height, x, y, bezel, top, bottom, left, right] { input.clear() }
             resolution.stringValue = "—"; ppi.stringValue = "—"; role.stringValue = "—"
             isLocked = false
@@ -179,7 +186,7 @@ final class DisplayInspectorView: NSView {
         hasDisplay = true
         isLocked = d.isLocked
         if nickname.currentEditor() == nil { nickname.stringValue = d.nickname }
-        detected.stringValue = "Detected: " + DisplayInfo.displayName(for: d.displayID)
+        detected.stringValue = "(" + DisplayInfo.displayName(for: d.displayID) + ")"
         width.value = d.physicalWidthInches; height.value = d.physicalHeightInches
         x.value = Double(px); y.value = Double(py)
         uniform.state = d.uniformBezel ? .on : .off
@@ -188,10 +195,10 @@ final class DisplayInspectorView: NSView {
         top.value = d.bezelTop; bottom.value = d.bezelBottom
         left.value = d.bezelLeft; right.value = d.bezelRight
         uniformSection.isHidden = !d.uniformBezel; individualSection.isHidden = d.uniformBezel
-        // Keep the picker's hue steady while the user drags inside it.
-        if picker.color.displayHex != d.colorHex { picker.color = NSColor(displayHex: d.colorHex) }
-        swatch.fillColor = NSColor(displayHex: d.colorHex)
+        displayColor.setColor(NSColor(displayHex: d.colorHex))
+        bezelColor.setColor(NSColor(displayHex: d.bezelColorHex))
         showBezel.state = d.showBezel ? .on : .off
+        showsBezel = d.showBezel
         resolution.stringValue = "\(d.pixelWidth) × \(d.pixelHeight) pixels"; ppi.stringValue = String(format: "%.0f PPI", d.ppi)
         role.stringValue = d.isPrimary ? "Primary display" : "Secondary display"
         updateLockButton(); applyEnabled()
@@ -200,9 +207,14 @@ final class DisplayInspectorView: NSView {
     /// Everything except the lock is read-only while the display is locked or nothing is selected.
     private func applyEnabled() {
         let editable = hasDisplay && !isLocked
-        for input in [width, height, x, y, bezel, top, bottom, left, right] { input.isEnabled = editable }
-        nickname.isEnabled = editable; uniform.isEnabled = editable; slider.isEnabled = editable
-        showBezel.isEnabled = editable; picker.isEnabled = editable
+        for input in [width, height, x, y] { input.isEnabled = editable }
+        // The uniform field is read-only while individual sides are shown.
+        let bezelEditable = editable && showsBezel
+        for input in [top, bottom, left, right] { input.isEnabled = bezelEditable }
+        bezel.isEnabled = bezelEditable && uniform.state == .on
+        nickname.isEnabled = editable; showBezel.isEnabled = editable
+        uniform.isEnabled = bezelEditable; slider.isEnabled = bezelEditable
+        bezelColor.isEnabled = bezelEditable; displayColor.isEnabled = editable
         lockButton.isEnabled = hasDisplay
     }
 

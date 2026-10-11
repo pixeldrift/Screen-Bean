@@ -9,6 +9,7 @@ import Cocoa
 
 enum DisplayDefaults {
     static let colorHex = "28B7B0"
+    static let bezelColorHex = "4A4A4A"
     static let bezelInches = 0.25
 }
 

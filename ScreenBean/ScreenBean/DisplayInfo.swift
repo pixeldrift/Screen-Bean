@@ -43,6 +43,7 @@ struct DisplayInfo {
     var bezelBottom: Double = DisplayDefaults.bezelInches
     var bezelLeft: Double = DisplayDefaults.bezelInches
     var bezelRight: Double = DisplayDefaults.bezelInches
+    var bezelColorHex: String = DisplayDefaults.bezelColorHex
     var showBezel: Bool = true
     /// When locked, the display can't be edited or dragged.
     var isLocked: Bool = false
@@ -228,6 +229,7 @@ struct DisplayInfo {
             bezelBottom: bezelBottom,
             bezelLeft: bezelLeft,
             bezelRight: bezelRight,
+            bezelColorHex: bezelColorHex,
             showBezel: showBezel,
             isLocked: isLocked
         )
@@ -253,6 +255,7 @@ struct DisplayInfo {
         bezelBottom = configuration.bezelBottom
         bezelLeft = configuration.bezelLeft
         bezelRight = configuration.bezelRight
+        bezelColorHex = configuration.bezelColorHex
         showBezel = configuration.showBezel
         isLocked = configuration.isLocked
     }

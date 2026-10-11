@@ -483,6 +483,9 @@ This allows Screen Bean to restore display-specific configuration between launch
 * [ ]	Rotate displays
 * [x]	Edit physical dimensions
 * [ ]	Display calibration UI
+* [ ]	Type fractional measurements (for example "23 1/8") in number inputs
+* [ ]	Toggle number inputs between decimal and fractions (nearest 16th)
+* [ ]	Unit options (inches, centimeters, and others)
 * [x]	Display color coding
 * [x]	Bezel visibility
 * [ ]	Display transparency

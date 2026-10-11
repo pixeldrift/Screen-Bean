@@ -3,7 +3,8 @@
 //  ScreenBean
 //
 //  Sidebar options for one workspace image layer (reference image or spanned
-//  wallpaper): choose a file, preview it, and set how it blends with the displays.
+//  wallpaper): choose or drop a file, preview it, and set how it blends with
+//  the displays. The reference image also gets position and scale fields.
 //
 
 import Cocoa
@@ -14,41 +15,64 @@ final class ImageLayerPanel: NSView {
     var onImageChanged: ((NSImage?, Data?) -> Void)?
     /// Called with a blend value from -1 to 1. See `ImageLayerBlend`.
     var onBlendChanged: ((Double) -> Void)?
+    /// Called when the user edits the position or scale fields.
+    var onFrameChanged: ((ImageFrame) -> Void)?
 
-    private let thumbnail = NSImageView()
-    private let chooseButton = NSButton(title: "Choose Image…", target: nil, action: nil)
+    private let dropZone = ImageDropView()
+    private let chooseButton = DropButton(title: "Choose Image…", target: nil, action: nil)
     private let clearButton = NSButton(title: "Clear", target: nil, action: nil)
     private let slider = NSSlider(value: 0, minValue: -1, maxValue: 1, target: nil, action: nil)
     private let readout = NSTextField(labelWithString: "")
+    private let x = NumberInput(), y = NumberInput(), width = NumberInput(), height = NumberInput()
+    private var transformSection: NSView?
 
     private let titleText: String
+    private let showsTransform: Bool
+    private var frameValue: ImageFrame?
 
-    init(title: String) {
+    /// Height / width of the current image; 1 when there is none.
+    private var aspect: Double {
+        guard let size = dropZone.image?.size, size.width > 0 else { return 1 }
+        return Double(size.height / size.width)
+    }
+
+    init(title: String, showsTransform: Bool = false) {
         titleText = title
+        self.showsTransform = showsTransform
         super.init(frame: .zero)
         build()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// Shows saved state without notifying `onImageChanged` / `onBlendChanged`.
+    /// Shows saved state without notifying the change callbacks.
     func restore(image: NSImage?, blend: Double) {
-        thumbnail.image = image
+        dropZone.image = image
         clearButton.isEnabled = image != nil
         slider.isEnabled = image != nil
         slider.doubleValue = blend
         updateReadout()
+        updateTransformVisibility()
+    }
+
+    /// Shows the image's current position and size, without notifying `onFrameChanged`.
+    func showFrame(_ frame: ImageFrame?) {
+        frameValue = frame
+        guard let frame else { return }
+        x.value = frame.centerX; y.value = frame.centerY
+        width.value = frame.width; height.value = frame.width * aspect
     }
 
     private func build() {
         let title = NSTextField(labelWithString: titleText)
         title.font = .boldSystemFont(ofSize: 14)
 
-        thumbnail.imageScaling = .scaleProportionallyUpOrDown
-        thumbnail.imageFrameStyle = .grayBezel
-        thumbnail.translatesAutoresizingMaskIntoConstraints = false
-        thumbnail.heightAnchor.constraint(equalToConstant: 140).isActive = true
+        dropZone.translatesAutoresizingMaskIntoConstraints = false
+        dropZone.heightAnchor.constraint(equalToConstant: 90).isActive = true
+        dropZone.onClick = { [weak self] in self?.chooseImage() }
+        dropZone.onDropURL = { [weak self] in self?.load(url: $0) }
 
         chooseButton.target = self; chooseButton.action = #selector(chooseImage)
+        chooseButton.onDropURL = { [weak self] in self?.load(url: $0) }
         clearButton.target = self; clearButton.action = #selector(clearImage)
         clearButton.isEnabled = false
         let buttons = NSStackView(views: [chooseButton, clearButton])
@@ -86,27 +110,72 @@ final class ImageLayerPanel: NSView {
         let heading = NSTextField(labelWithString: "OPACITY & LAYER")
         heading.font = .boldSystemFont(ofSize: 10); heading.textColor = .secondaryLabelColor
 
-        let stack = NSStackView(views: [title, thumbnail, buttons, heading, sliderHolder, ends, readout])
+        var views: [NSView] = [title, dropZone, buttons]
+        if showsTransform {
+            let section = buildTransformSection()
+            transformSection = section
+            views.append(section)
+        }
+        views += [heading, sliderHolder, ends, readout]
+        let stack = NSStackView(views: views)
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
-        for v in [thumbnail, sliderHolder, ends] { v.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        var fullWidth: [NSView] = [dropZone, sliderHolder, ends]
+        if let transformSection { fullWidth.append(transformSection) }
+        for v in fullWidth { v.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 0),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
         updateReadout()
+        updateTransformVisibility()
     }
+
+    private func buildTransformSection() -> NSView {
+        for input in [x, y, width, height] { input.step = 0.1 }
+        x.minimum = -100000; y.minimum = -100000
+        width.minimum = 0.1; height.minimum = 0.1
+        x.onChange = { [weak self] v in self?.edit { $0.centerX = v } }
+        y.onChange = { [weak self] v in self?.edit { $0.centerY = v } }
+        width.onChange = { [weak self] v in self?.edit { $0.width = v } }
+        height.onChange = { [weak self] v in
+            guard let self else { return }
+            let aspect = self.aspect
+            self.edit { $0.width = v / aspect }
+        }
+        let section = NSStackView(views: [
+            twoColumnGrid(x.labeled("X-Pos", unit: "inches"), y.labeled("Y-Pos", unit: "inches")),
+            twoColumnGrid(width.labeled("Width", unit: "inches"), height.labeled("Height", unit: "inches"))
+        ])
+        section.orientation = .vertical; section.alignment = .width; section.spacing = 8
+        return section
+    }
+
+    private func edit(_ change: (inout ImageFrame) -> Void) {
+        guard var frame = frameValue else { return }
+        change(&frame)
+        showFrame(frame)
+        onFrameChanged?(frame)
+    }
+
+    private func updateTransformVisibility() { transformSection?.isHidden = dropZone.image == nil }
+
+    // MARK: - Actions
 
     @objc private func chooseImage() {
         let open = NSOpenPanel()
         open.allowedContentTypes = [.image]
         open.allowsMultipleSelection = false
         open.canChooseDirectories = false
-        guard open.runModal() == .OK, let url = open.url,
-              let data = try? Data(contentsOf: url), let image = NSImage(data: data) else { return }
+        guard open.runModal() == .OK, let url = open.url else { return }
+        load(url: url)
+    }
+
+    private func load(url: URL) {
+        guard let data = try? Data(contentsOf: url), let image = NSImage(data: data) else { return }
         setImage(image)
         onImageChanged?(image, data)
     }
@@ -117,12 +186,13 @@ final class ImageLayerPanel: NSView {
     }
 
     private func setImage(_ image: NSImage?) {
-        thumbnail.image = image
+        dropZone.image = image
         clearButton.isEnabled = image != nil
         slider.isEnabled = image != nil
         // Make a freshly chosen image visible, sitting below the displays.
         if image != nil, slider.doubleValue == 0 { slider.doubleValue = -1; onBlendChanged?(-1) }
         updateReadout()
+        updateTransformVisibility()
     }
 
     @objc private func sliderChanged() {
@@ -132,13 +202,13 @@ final class ImageLayerPanel: NSView {
 
     private func updateReadout() {
         let blend = ImageLayerBlend(value: slider.doubleValue)
-        if thumbnail.image == nil { readout.stringValue = "No image chosen" }
+        if dropZone.image == nil { readout.stringValue = "No image chosen" }
         else if blend.opacity == 0 { readout.stringValue = "Hidden" }
         else { readout.stringValue = "\(Int((blend.opacity * 100).rounded()))% opacity, \(blend.aboveDisplays ? "above" : "below") displays" }
     }
 }
 
-/// Interprets the reference image slider: -1 is the image below the displays at
+/// Interprets the image layer slider: -1 is the image below the displays at
 /// full opacity, 0 is invisible, and +1 is the image above the displays at full opacity.
 struct ImageLayerBlend {
     var opacity: Double

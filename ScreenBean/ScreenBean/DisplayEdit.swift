@@ -20,6 +20,7 @@ struct DisplayEdit {
     var bezelBottom: Double?
     var bezelLeft: Double?
     var bezelRight: Double?
+    var bezelColor: NSColor?
     var showBezel: Bool?
     var isLocked: Bool?
 }
