@@ -35,7 +35,7 @@ final class DisplayInspectorView: NSView {
     private var aspectIsLocked = false
     private var shownAspect = ""
     private let detectedLabel = NSTextField(labelWithString: "")
-    private let resetButton = NSButton(title: "Reset to Detected", target: nil, action: nil)
+    private let resetButton = NSButton(title: "Restore", target: nil, action: nil)
     private var detectedRow: NSView!
     private let uniform = NSButton(checkboxWithTitle: "Uniform", target: nil, action: nil)
     private let bezel = NumberInput()
@@ -148,7 +148,7 @@ final class DisplayInspectorView: NSView {
         detectedLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         resetButton.bezelStyle = .rounded; resetButton.controlSize = .small
         resetButton.target = self; resetButton.action = #selector(resetToDetected)
-        let detectedStack = NSStackView(views: [detectedLabel, NSView(), resetButton])
+        let detectedStack = NSStackView(views: [detectedLabel, resetButton, NSView()])
         detectedStack.spacing = 6
         detectedStack.distribution = .fill
         detectedRow = detectedStack
@@ -164,10 +164,14 @@ final class DisplayInspectorView: NSView {
         // or a cross of four sides, then colors and visibility.
         let caption = ScrubLabel("Bezel Size", unit: "inches", input: bezel)
         sizeCaption = caption
-        let sizeHeader = NSStackView(views: [caption, NSView(), uniform])
-        sizeHeader.distribution = .fill
-        uniform.setContentCompressionResistancePriority(.required, for: .horizontal)
-        uniform.setContentHuggingPriority(.required, for: .horizontal)
+        // Show bezel and Uniform sit together on the left; the size caption goes under them.
+        let toggles = NSStackView(views: [showBezel, uniform, NSView()])
+        toggles.spacing = 14
+        toggles.distribution = .fill
+        for checkbox in [showBezel, uniform] {
+            checkbox.setContentCompressionResistancePriority(.required, for: .horizontal)
+            checkbox.setContentHuggingPriority(.required, for: .horizontal)
+        }
         uniformSection = slider
         // Every side input is as wide as the other input boxes.
         func sideCell(_ name: String, _ input: NumberInput) -> NSView {
@@ -183,7 +187,7 @@ final class DisplayInspectorView: NSView {
         bezel.widthAnchor.constraint(equalToConstant: SidebarMetrics.columnWidth).isActive = true
         let bezelRow = NSStackView(views: [bezel, NSView()])
         bezelRow.distribution = .fill
-        let bezelSection = stack([sectionTitle("Bezel"), sizeHeader, bezelRow, uniformSection, individualSection, colorRow("Bezel Color", bezelColor), showBezel], spacing: 8)
+        let bezelSection = stack([sectionTitle("Bezel"), toggles, caption, bezelRow, uniformSection, individualSection, colorRow("Color", bezelColor)], spacing: 8)
         let appearance = section("Appearance", [colorRow("Display Color", displayColor)])
 
         // Only a virtual display shows this: it can be handed to a connected display, or deleted.
@@ -196,7 +200,7 @@ final class DisplayInspectorView: NSView {
         let keepNote = NSTextField(wrappingLabelWithString: "Leaves a stand-in in the layout when this display is unplugged, and takes over again when it returns.")
         keepNote.font = .systemFont(ofSize: 11); keepNote.textColor = .secondaryLabelColor
         connectionSection = stack([divider(), section("Connection", [keepCheckbox, keepNote])], spacing: 12)
-        virtualSection = stack([divider(), section("Virtual Display", [virtualNote, assignMenu, deleteVirtualButton])], spacing: 12)
+        virtualSection = stack([divider(), section("Virtual Display", [virtualNote, NSStackView(views: [assignMenu, NSView()]), NSStackView(views: [deleteVirtualButton, NSView()])])], spacing: 12)
         virtualSection.isHidden = true
         connectionSection.isHidden = true
 

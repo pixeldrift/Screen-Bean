@@ -10,7 +10,7 @@ import Cocoa
 
 final class SettingsPanel: NSView {
     let identifyButton = NSButton(title: "Identify Displays", target: nil, action: nil)
-    let excludePrimaryCheckbox = NSButton(checkboxWithTitle: "Exclude primary", target: nil, action: nil)
+    let excludePrimaryCheckbox = NSButton(checkboxWithTitle: "Exclude main", target: nil, action: nil)
 
     private let unitControl = NSSegmentedControl(labels: ["Inches", "Centimeters"], trackingMode: .selectOne, target: nil, action: nil)
     private let fractionsCheckbox = NSButton(checkboxWithTitle: "Show units as fractions", target: nil, action: nil)
@@ -31,15 +31,17 @@ final class SettingsPanel: NSView {
     required init?(coder: NSCoder) { super.init(coder: coder); build() }
 
     private func build() {
-        let title = NSTextField(labelWithString: "Settings")
+        let title = NSTextField(labelWithString: "ScreenBean Settings")
         title.font = .boldSystemFont(ofSize: 14)
 
         // Identify mode stays on, even while you click around, until the button is switched off.
         identifyButton.setButtonType(.pushOnPushOff)
         identifyButton.bezelStyle = .rounded
         identifyButton.toolTip = "Fill each real screen with its letter, name and size. Ends on any click or key press."
-        excludePrimaryCheckbox.toolTip = "Leave the primary display clear while identifying."
-        let identify = vertical([identifyButton, excludePrimaryCheckbox], spacing: 6)
+        excludePrimaryCheckbox.toolTip = "Leave the main (primary) display clear while identifying."
+        let identify = NSStackView(views: [identifyButton, excludePrimaryCheckbox])
+        identify.spacing = 10
+        identify.alignment = .centerY
 
         // Measurements: the unit, and (for inches) whether to show fractions.
         let unitLabel = NSTextField(labelWithString: "Measurement Units")
@@ -95,7 +97,9 @@ final class SettingsPanel: NSView {
         NotificationCenter.default.addObserver(forName: GuideSettings.didChange, object: nil, queue: .main) { [weak self] _ in self?.syncGuideControls() }
         syncGuideControls()
 
-        let stack = vertical([title, identify, units, fractions, rulersCheckbox, bezels, guides], spacing: 12)
+        let guidesDivider = NSBox(); guidesDivider.boxType = .separator
+        let stack = vertical([title, identify, units, fractions, rulersCheckbox, bezels, guidesDivider, guides], spacing: 12)
+        guidesDivider.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
