@@ -503,7 +503,7 @@ Organized by topic. Checked items are built.
 * [x]	Snap to guides and to bezels while dragging (Control flips snapping)
 * [x]	Modifier keys: Shift constrains or unlinks, Option transforms from the opposite side or zooms from view center, Control flips snapping, Z (held) turns a drag into a zoom, Option-scroll pans up and down and Shift-Option-scroll pans sideways
 * [x]	Shift snaps rotation to 15 degree steps (images; displays follow if arbitrary display rotation is added)
-* [ ]	Displays sidebar panel, collapsible, with List and Thumbnail views (collapsed by default, minimal details for each)
+* [x]	Displays sidebar panel, collapsible, with List and Thumbnail views (collapsed by default, minimal details for each)
 
 ### Display Settings
 

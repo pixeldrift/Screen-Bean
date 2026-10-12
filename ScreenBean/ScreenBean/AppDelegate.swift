@@ -223,6 +223,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self.mainView = mainView
         sidebar.exportImagesButton.target = self
         sidebar.exportImagesButton.action = #selector(exportWallpaperImages)
+        sidebar.displaysPanel.onSelect = { [weak mainView] id, extend in mainView?.selectDisplay(id, extending: extend) }
+        sidebar.displaysPanel.update(mainView.displaySummaries(), selected: mainView.selectedDisplayIDs)
         sidebar.exportTemplateButton.target = self
         sidebar.exportTemplateButton.action = #selector(exportTemplate)
         sidebar.applyWallpaperButton.target = self
@@ -455,6 +457,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Pushes the current displays and selection to the overlays on the real screens.
     private func refreshOverlays() {
         guard let mainView else { return }
+        sidebarView?.displaysPanel.update(mainView.displaySummaries(), selected: mainView.selectedDisplayIDs)
         overlays.update(
             displays: mainView.displays,
             selectedIDs: mainView.selectedDisplayIDs,

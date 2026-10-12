@@ -1914,6 +1914,25 @@ class DisplayArrangementView: NSView {
         return WallpaperExport(slices: slices, imagePixelsPerInch: Double(cgImage.width) / Double(imageRect.width), neededPixelsPerInch: neededPPI)
     }
 
+    // MARK: - Display List
+    /// Selects a display from the sidebar's list. With `extending`, adds it to (or removes it from) the selection.
+    func selectDisplay(_ id: CGDirectDisplayID, extending: Bool = false) {
+        guard displays.contains(where: { $0.displayID == id }) else { return }
+        select(.display(id), extending: extending)
+    }
+
+    /// What the sidebar's display list shows, in the order the letters are given out.
+    func displaySummaries() -> [DisplaySummary] {
+        displays.enumerated().map { index, d in
+            DisplaySummary(
+                id: d.displayID, label: DisplayIdentity.label(forIndex: index), name: d.nickname, colorHex: d.colorHex,
+                pixelWidth: d.pixelWidth, pixelHeight: d.pixelHeight,
+                widthInches: d.physicalWidthInches, heightInches: d.physicalHeightInches,
+                isVirtual: d.isVirtual, isRemembered: d.isRemembered, isPrimary: d.isPrimary
+            )
+        }
+    }
+
     // MARK: - Template
     /// The layout as a flat template for designing a wallpaper over: each screen where it sits, at real size.
     func layoutTemplate() -> LayoutTemplate? {
