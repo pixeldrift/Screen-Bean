@@ -147,3 +147,66 @@ struct ReferenceAlignmentTests {
         #expect(frame.rotation == 20 && frame.stretch == 1.2 && frame.flipHorizontal)
     }
 }
+
+struct MouseTransitTests {
+    private let rect = CGRect(x: 10, y: 20, width: 8, height: 4)
+    private func close(_ a: CGPoint, _ b: CGPoint) -> Bool { abs(a.x - b.x) < 1e-9 && abs(a.y - b.y) < 1e-9 }
+
+    @Test func perimeterPointsRunClockwiseFromTheTopLeft() {
+        #expect(close(Perimeter.point(0, in: rect), CGPoint(x: 10, y: 24)))     // top-left
+        #expect(close(Perimeter.point(1, in: rect), CGPoint(x: 18, y: 24)))     // top-right
+        #expect(close(Perimeter.point(2, in: rect), CGPoint(x: 18, y: 20)))     // bottom-right
+        #expect(close(Perimeter.point(3, in: rect), CGPoint(x: 10, y: 20)))     // bottom-left
+        #expect(close(Perimeter.point(4, in: rect), CGPoint(x: 10, y: 24)))     // back at the top-left
+        #expect(close(Perimeter.point(1.5, in: rect), CGPoint(x: 18, y: 22)))   // middle of the right edge
+    }
+
+    @Test func parameterFindsTheNearestEdge() {
+        #expect(abs(Perimeter.parameter(for: CGPoint(x: 14, y: 30), in: rect) - 0.5) < 1e-9)   // above the top edge
+        #expect(abs(Perimeter.parameter(for: CGPoint(x: 30, y: 22), in: rect) - 1.5) < 1e-9)   // right of the right edge
+        #expect(abs(Perimeter.parameter(for: CGPoint(x: 14, y: 0), in: rect) - 2.5) < 1e-9)    // below
+    }
+
+    @Test func arcsPassTheCornersInBetween() {
+        #expect(Perimeter.arc(from: 3, to: 1) == [3, 2, 1])
+        #expect(Perimeter.arc(from: 0.5, to: 2.5) == [0.5, 1, 2, 2.5])
+        #expect(Perimeter.arc(from: 3.5, to: 4.5) == [3.5, 4, 4.5])
+    }
+
+    @Test func deltaTakesTheShortWayRound() {
+        #expect(abs(Perimeter.delta(from: 3.9, to: 0.1) - 0.2) < 1e-9)
+        #expect(abs(Perimeter.delta(from: 0.1, to: 3.9) + 0.2) < 1e-9)
+    }
+
+    /// Two displays side by side are linked right edge to left edge, top to top and bottom to bottom.
+    @Test func sideBySideDisplaysAreLinked() {
+        let left = TransitDetector.Panel(key: "L", rect: CGRect(x: 0, y: 0, width: 10, height: 6))
+        let right = TransitDetector.Panel(key: "R", rect: CGRect(x: 12, y: 1, width: 8, height: 4))
+        let zones = TransitDetector.autoZones(for: [right, left])
+        #expect(zones.count == 1)
+        #expect(zones[0].a == TransitSide(displayKey: "L", u0: 1, u1: 2))
+        #expect(zones[0].b == TransitSide(displayKey: "R", u0: 4, u1: 3))
+    }
+
+    /// A display above another is linked bottom edge to top edge.
+    @Test func stackedDisplaysAreLinked() {
+        let lower = TransitDetector.Panel(key: "A", rect: CGRect(x: 5, y: 0, width: 10, height: 6))
+        let upper = TransitDetector.Panel(key: "B", rect: CGRect(x: 0, y: 8, width: 10, height: 5))
+        let zones = TransitDetector.autoZones(for: [lower, upper])
+        #expect(zones.count == 1)
+        #expect(zones[0].a == TransitSide(displayKey: "B", u0: 3, u1: 2))
+        #expect(zones[0].b == TransitSide(displayKey: "A", u0: 0, u1: 1))
+    }
+
+    @Test func displaysThatDontFaceEachOtherAreNotLinked() {
+        let a = TransitDetector.Panel(key: "A", rect: CGRect(x: 0, y: 0, width: 4, height: 4))
+        let b = TransitDetector.Panel(key: "B", rect: CGRect(x: 10, y: 10, width: 4, height: 4))
+        #expect(TransitDetector.autoZones(for: [a, b]).isEmpty)
+    }
+
+    @Test func aBlockedPairIsLeftOut() {
+        let left = TransitDetector.Panel(key: "L", rect: CGRect(x: 0, y: 0, width: 4, height: 4))
+        let right = TransitDetector.Panel(key: "R", rect: CGRect(x: 10, y: 0, width: 4, height: 4))
+        #expect(TransitDetector.autoZones(for: [left, right], isBlocked: { _, _, _ in true }).isEmpty)
+    }
+}

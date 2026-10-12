@@ -19,6 +19,7 @@ struct WorkspaceSnapshot: Equatable {
     var displays: [DisplayInfo]
     var layout: [PhysicalLayout.Display]
     var guides: [Guide]
+    var transit: [TransitZone]
     var reference: ImageLayerState
     var wallpaper: ImageLayerState
 }

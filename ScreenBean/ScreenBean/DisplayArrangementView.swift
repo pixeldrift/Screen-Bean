@@ -192,7 +192,7 @@ class DisplayArrangementView: NSView {
         super.viewDidMoveToWindow()
         // Redraw when settings that change how displays look are switched.
         guard settingsObservers.isEmpty else { return }
-        for name in [BezelVisibility.didChange, MeasurementFormat.didChange, GuideSettings.didChange, GuideStore.didChange] {
+        for name in [BezelVisibility.didChange, MeasurementFormat.didChange, GuideSettings.didChange, GuideStore.didChange, TransitStore.didChange] {
             settingsObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 self?.needsDisplay = true
             })
@@ -375,6 +375,7 @@ class DisplayArrangementView: NSView {
         if wallpaperClipsToDisplays && !drawsAboveDisplays(.wallpaper) { drawImageLayer(.wallpaper, part: .insideDisplays) }
         for slot in imageSlots where drawsAboveDisplays(slot) { drawImageLayer(slot) }
         drawImageLockIcons(in: context)
+        drawTransit()
         drawGuides()
         drawGapMeasurements()
         drawGroupSelection()
@@ -1048,6 +1049,7 @@ class DisplayArrangementView: NSView {
     /// The cursor for whatever is under `point`: an arrow pointing the way a drag from there would go.
     private func cursor(at point: CGPoint) -> NSCursor {
         if isZoomKeyDown { return ToolCursors.zoomIn }
+        if let handle = transitHandle(at: point) { return transitCursor(for: handle.u) }
         if let axis = rulerAxis(at: point) { return guideCursor(axis) }
         if let guide = customGuide(at: point) { return guideCursor(guide.axis) }
         if let gap = gapMeasurement(at: point) { return gapCursor(gap.measurement, zone: gap.zone) }
@@ -1097,6 +1099,8 @@ class DisplayArrangementView: NSView {
             UndoCenter.shared.perform(doomed.count > 1 ? "Delete Guides" : "Delete Guide") { for id in doomed { GuideStore.shared.remove(id) } }
             selectedGuideIDs = []
             hoverGuideID = nil
+        } else if event.keyCode == 51 || event.keyCode == 117, selectedTransitID != nil {
+            removeSelectedTransit()
         } else if event.keyCode == 51 || event.keyCode == 117, selectedDisplays.contains(where: \.isVirtual) {
             deleteSelectedVirtualDisplays()
         } else {
@@ -1581,6 +1585,7 @@ class DisplayArrangementView: NSView {
             displays: displays,
             layout: physicalLayout.displays,
             guides: GuideStore.shared.guides,
+            transit: TransitStore.shared.overrides,
             reference: ImageLayerState(frame: referenceLayer.frame, isLocked: referenceLayer.isLocked),
             wallpaper: ImageLayerState(frame: wallpaperLayer.frame, isLocked: wallpaperLayer.isLocked)
         )
@@ -1593,6 +1598,7 @@ class DisplayArrangementView: NSView {
         suppressDisplayRebuild = false
         physicalLayout.displays = snapshot.layout
         GuideStore.shared.replaceAll(snapshot.guides)
+        TransitStore.shared.replaceAll(snapshot.transit)
         applyImageState(.referenceImage, snapshot.reference)
         applyImageState(.wallpaper, snapshot.wallpaper)
         // Undoing the adding or deleting of a virtual display changes which ones exist.
@@ -1861,6 +1867,196 @@ class DisplayArrangementView: NSView {
         needsDisplay = true
     }
 
+    // MARK: - Mouse Transit
+    private enum TransitHandleKind { case start, end, middle }
+
+    private struct TransitDrag {
+        let zoneID: String
+        let side: Int
+        let kind: TransitHandleKind
+        /// Where on the display's outline the pointer was, and where the stretch's ends were, when the drag began.
+        let startMouseU: Double
+        let startU0: Double
+        let startU1: Double
+    }
+
+    /// The zone whose dots are showing.
+    private var selectedTransitID: String?
+    private var transitDrag: TransitDrag?
+
+    /// Every zone: found between displays that face each other, with the user's changes applied.
+    func transitZones() -> [TransitZone] {
+        guard GuideSettings.showMouseTransit else { return [] }
+        let panels = physicalLayout.displays.map { TransitDetector.Panel(key: $0.persistentID, rect: panelRect($0)) }
+        let found = TransitDetector.autoZones(for: panels) { gap, first, second in
+            physicalLayout.displays.contains { $0.persistentID != first && $0.persistentID != second && panelRect($0).intersects(gap) }
+        }
+        return TransitStore.shared.resolved(found)
+    }
+
+    private func transitRect(_ key: String) -> CGRect? {
+        physicalLayout.displays.first(where: { $0.persistentID == key }).map(panelRect)
+    }
+
+    private func transitColor(_ key: String) -> NSColor {
+        physicalLayout.displays.first(where: { $0.persistentID == key }).map { NSColor(displayHex: $0.colorHex) } ?? .systemGray
+    }
+
+    private func viewPoint(forPhysical p: CGPoint) -> CGPoint {
+        CGPoint(x: p.x * pointsPerInch + viewOffset.x, y: p.y * pointsPerInch + viewOffset.y)
+    }
+
+    /// The path along one display's stretch of a zone, through any corners it passes.
+    private func transitArc(_ side: TransitSide) -> NSBezierPath? {
+        guard let rect = transitRect(side.displayKey) else { return nil }
+        let path = NSBezierPath()
+        for (index, u) in Perimeter.arc(from: side.u0, to: side.u1).enumerated() {
+            let p = viewPoint(forPhysical: Perimeter.point(u, in: rect))
+            if index == 0 { path.move(to: p) } else { path.line(to: p) }
+        }
+        return path
+    }
+
+    /// The shape joining the two stretches: along one, across, back along the other, and across.
+    private func transitPolygon(_ zone: TransitZone) -> NSBezierPath? {
+        guard let ra = transitRect(zone.a.displayKey), let rb = transitRect(zone.b.displayKey) else { return nil }
+        let there = Perimeter.arc(from: zone.a.u0, to: zone.a.u1).map { viewPoint(forPhysical: Perimeter.point($0, in: ra)) }
+        let back = Perimeter.arc(from: zone.b.u1, to: zone.b.u0).map { viewPoint(forPhysical: Perimeter.point($0, in: rb)) }
+        let points = there + back
+        guard let first = points.first else { return nil }
+        let path = NSBezierPath()
+        path.move(to: first)
+        for p in points.dropFirst() { path.line(to: p) }
+        path.close()
+        return path
+    }
+
+    private func transitZone(at point: CGPoint) -> TransitZone? {
+        guard GuideSettings.showMouseTransit, !isOverRuler(point) else { return nil }
+        return transitZones().reversed().first { transitPolygon($0)?.contains(point) == true }
+    }
+
+    private func drawTransit() {
+        for zone in transitZones() {
+            guard let polygon = transitPolygon(zone) else { continue }
+            let colorA = transitColor(zone.a.displayKey), colorB = transitColor(zone.b.displayKey)
+            let isSelected = zone.id == selectedTransitID
+            (colorA.blended(withFraction: 0.5, of: colorB) ?? colorA).withAlphaComponent(isSelected ? 0.5 : 0.3).setFill()
+            polygon.fill()
+            polygon.lineWidth = 1.5
+            polygon.setLineDash([6, 4], count: 2, phase: 0)
+            NSColor.labelColor.withAlphaComponent(isSelected ? 0.7 : 0.4).setStroke()
+            polygon.stroke()
+            // Each display's edge takes the color of the display it connects to.
+            for (side, color) in [(zone.a, colorB), (zone.b, colorA)] {
+                guard let arc = transitArc(side) else { continue }
+                arc.lineCapStyle = .round
+                arc.lineJoinStyle = .round
+                arc.lineWidth = 6
+                NSColor.black.withAlphaComponent(0.35).setStroke()
+                arc.stroke()
+                arc.lineWidth = 4
+                color.setStroke()
+                arc.stroke()
+            }
+            guard isSelected else { continue }
+            for handle in transitHandles(zone) {
+                let radius: CGFloat = handle.kind == .middle ? 4 : 6.5
+                let dot = NSBezierPath(ovalIn: CGRect(x: handle.point.x - radius, y: handle.point.y - radius, width: radius * 2, height: radius * 2))
+                NSColor.white.setFill()
+                dot.fill()
+                dot.lineWidth = 3
+                NSColor.black.withAlphaComponent(0.5).setStroke()
+                dot.stroke()
+                dot.lineWidth = 2
+                (handle.side == 0 ? colorB : colorA).setStroke()
+                dot.stroke()
+            }
+        }
+    }
+
+    /// The dots on a zone: the two ends of each stretch, and a smaller one in the middle that slides the whole stretch.
+    private func transitHandles(_ zone: TransitZone) -> [(side: Int, kind: TransitHandleKind, u: Double, point: CGPoint)] {
+        var handles: [(side: Int, kind: TransitHandleKind, u: Double, point: CGPoint)] = []
+        for (index, side) in [zone.a, zone.b].enumerated() {
+            guard let rect = transitRect(side.displayKey) else { continue }
+            for (kind, u) in [(TransitHandleKind.start, side.u0), (.end, side.u1), (.middle, side.middle)] {
+                handles.append((index, kind, u, viewPoint(forPhysical: Perimeter.point(u, in: rect))))
+            }
+        }
+        return handles
+    }
+
+    /// The dot of the selected zone under `point`; the ends win over the middle one when they overlap.
+    private func transitHandle(at point: CGPoint) -> (zoneID: String, side: Int, kind: TransitHandleKind, sideKey: String, u: Double, u0: Double, u1: Double)? {
+        guard GuideSettings.showMouseTransit, let id = selectedTransitID, let zone = transitZones().first(where: { $0.id == id }) else { return nil }
+        var best: (handle: (side: Int, kind: TransitHandleKind, u: Double, point: CGPoint), distance: CGFloat)?
+        for handle in transitHandles(zone) {
+            let distance = hypot(handle.point.x - point.x, handle.point.y - point.y)
+            let reach: CGFloat = handle.kind == .middle ? 7 : 10
+            guard distance <= reach else { continue }
+            // Ends are preferred to the middle dot, then the nearer one.
+            let score = distance + (handle.kind == .middle ? 6 : 0)
+            if best == nil || score < best!.distance { best = (handle, score) }
+        }
+        guard let found = best?.handle else { return nil }
+        let side = found.side == 0 ? zone.a : zone.b
+        return (zone.id, found.side, found.kind, side.displayKey, found.u, side.u0, side.u1)
+    }
+
+    /// A double arrow along the edge the dot is on.
+    private func transitCursor(for u: Double) -> NSCursor {
+        ToolCursors.resize(angle: Perimeter.edge(u) % 2 == 0 ? 0 : 90)
+    }
+
+    /// A position that is within a few points of a corner lands on it.
+    private func snappedToCorner(_ u: Double, in rect: CGRect) -> Double {
+        let corner = u.rounded()
+        let a = viewPoint(forPhysical: Perimeter.point(corner, in: rect)), b = viewPoint(forPhysical: Perimeter.point(u, in: rect))
+        return hypot(a.x - b.x, a.y - b.y) < 12 ? corner : u
+    }
+
+    private func dragTransit(to point: CGPoint) {
+        guard let drag = transitDrag, var zone = transitZones().first(where: { $0.id == drag.zoneID }) else { return }
+        var side = drag.side == 0 ? zone.a : zone.b
+        guard let rect = transitRect(side.displayKey) else { return }
+        let u = Perimeter.parameter(for: viewToPhysical(point), in: rect)
+        switch drag.kind {
+        case .start, .end:
+            // Follow the pointer around the outline without jumping across the 0 / 4 corner.
+            let previous = drag.kind == .start ? side.u0 : side.u1
+            let target = snappedToCorner(previous + Perimeter.delta(from: previous, to: u), in: rect)
+            if drag.kind == .start { side.u0 = target } else { side.u1 = target }
+        case .middle:
+            var shift = Perimeter.delta(from: drag.startMouseU, to: u)
+            // Whichever end comes near a corner lands on it, and the stretch stays the same length.
+            for end in [drag.startU0, drag.startU1] {
+                let moved = end + shift
+                let snapped = snappedToCorner(moved, in: rect)
+                if snapped != moved { shift = snapped - end; break }
+            }
+            side.u0 = drag.startU0 + shift
+            side.u1 = drag.startU1 + shift
+        }
+        // A stretch can't be longer than the whole outline.
+        guard abs(side.u1 - side.u0) <= 4 else { return }
+        side.normalize()
+        if drag.side == 0 { zone.a = side } else { zone.b = side }
+        TransitStore.shared.set(zone)
+        needsDisplay = true
+    }
+
+    /// Takes the selected zone away. The displays are not found to be linked again until it is restored by undo.
+    private func removeSelectedTransit() {
+        guard let id = selectedTransitID, var zone = transitZones().first(where: { $0.id == id }) else { return }
+        UndoCenter.shared.perform("Remove Mouse Transit") {
+            zone.isRemoved = true
+            TransitStore.shared.set(zone)
+        }
+        selectedTransitID = nil
+        needsDisplay = true
+    }
+
     // MARK: - Align to Display
     /// The displays a photo can be matched to, with each screen's place in the workspace.
     func alignmentTargets() -> [AlignTarget] {
@@ -2124,6 +2320,7 @@ class DisplayArrangementView: NSView {
     private func select(_ target: EditTarget?, extending: Bool = false) {
         var targetsDisplay = false
         if case .display? = target { targetsDisplay = true }
+        selectedTransitID = nil
         if !(extending && targetsDisplay) {
             selectedDisplayIDs = []
             selectedGuideIDs = []
@@ -2221,6 +2418,17 @@ class DisplayArrangementView: NSView {
             pushCursor(guideCursor(guide.axis))
             return
         }
+        // The dots of the selected transit zone slide along their display's outline.
+        if let handle = transitHandle(at: point) {
+            guard let rect = transitRect(handle.sideKey) else { return }
+            transitDrag = TransitDrag(
+                zoneID: handle.zoneID, side: handle.side, kind: handle.kind,
+                startMouseU: Perimeter.parameter(for: viewToPhysical(point), in: rect), startU0: handle.u0, startU1: handle.u1
+            )
+            undoName = "Edit Mouse Transit"
+            pushCursor(transitCursor(for: handle.u))
+            return
+        }
         // Dragging a gap measurement slides it along the gap, or moves the display on the grabbed side.
         if let hit = gapMeasurement(at: point) {
             var rect: CGRect?
@@ -2300,6 +2508,14 @@ class DisplayArrangementView: NSView {
             return
         }
 
+        // Clicking inside a transit zone selects it, which shows its dots.
+        if let zone = transitZone(at: point) {
+            select(nil)
+            selectedTransitID = zone.id
+            needsDisplay = true
+            return
+        }
+
         // Command-drag on the background zooms, keeping the selection.
         if event.modifierFlags.contains(.command) {
             beginZoomDrag(at: point, optionHeld: event.modifierFlags.contains(.option))
@@ -2339,6 +2555,11 @@ class DisplayArrangementView: NSView {
                 moveGroup(dx: guide.axis == .vertical ? delta : 0, dy: guide.axis == .horizontal ? delta : 0, excludingDisplay: nil, excludingGuide: guideDrag)
             }
             didDrag = true
+            return
+        }
+
+        if transitDrag != nil {
+            dragTransit(to: currentPoint)
             return
         }
 
@@ -2497,6 +2718,11 @@ class DisplayArrangementView: NSView {
     ) {
         popCursor()
         defer { finishGesture() }
+        if transitDrag != nil {
+            transitDrag = nil
+            needsDisplay = true
+            return
+        }
         if gapDrag != nil {
             gapDrag = nil
             syncSelectedLayoutToDisplay(save: true)

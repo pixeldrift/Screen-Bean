@@ -542,7 +542,8 @@ Organized by topic. Checked items are built.
 
 ### Mouse Mapping
 
-* [ ]	Display edge transport zones
+* [x]	Show Mouse Transit: zones found automatically between facing displays (the whole of the two edges linked, corner to corner), drawn as translucent shapes with each edge colored for the display it connects to. Select a zone to move its end dots along a display's outline (they snap to corners and can go around a corner) or slide a whole side with its middle dot. Edits are remembered; Delete removes a zone
+* [ ]	Make the mouse actually cross by these zones (needs a system event tap)
 * [ ]	Edge-segment mapping
 * [ ]	Corner mapping
 * [ ]	Point correspondence and interpolation

@@ -65,6 +65,12 @@ enum GuideSettings {
         set { set(newValue, forKey: "ScreenBean.ShowRulers") }
     }
 
+    /// Where the mouse can cross between displays: linked edges, drawn as translucent shapes in the gaps.
+    static var showMouseTransit: Bool {
+        get { bool("ScreenBean.ShowMouseTransit", default: false) }
+        set { set(newValue, forKey: "ScreenBean.ShowMouseTransit") }
+    }
+
     /// The guides dragged out of the rulers.
     static var showCustomGuides: Bool {
         get { bool("ScreenBean.ShowCustomGuides", default: true) }
