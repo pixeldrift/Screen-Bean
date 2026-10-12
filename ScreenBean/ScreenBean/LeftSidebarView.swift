@@ -16,6 +16,7 @@ final class LeftSidebarView: NSView {
     let displaysPanel = DisplaysPanel()
     let refreshButton = NSButton(title: "Refresh Displays", target: nil, action: nil)
     let addVirtualButton = NSButton(title: "Add Virtual Display…", target: nil, action: nil)
+    let settingsButton = NSButton(title: "Display Settings…", target: nil, action: nil)
 
     private let content = NSView()
     private let expandButton = NSButton()
@@ -51,14 +52,20 @@ final class LeftSidebarView: NSView {
         scroll.documentView = document
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
-        for button in [refreshButton, addVirtualButton] {
+        // Each button fills the sidebar's width and carries an icon.
+        let icons: [(NSButton, String)] = [(refreshButton, "arrow.clockwise"), (addVirtualButton, "plus.square.dashed"), (settingsButton, "gearshape")]
+        for (button, symbol) in icons {
             button.bezelStyle = .rounded
             button.controlSize = .regular
+            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: button.title)
+            button.imagePosition = .imageLeading
+            button.imageHugsTitle = true
         }
+        settingsButton.toolTip = "Open Displays in System Settings"
         refreshButton.toolTip = "Read the displays from macOS again, for example after changing them in System Settings"
         addVirtualButton.toolTip = "Add a planned display that isn't connected"
-        let buttons = NSStackView(views: [refreshButton, addVirtualButton])
-        buttons.orientation = .vertical; buttons.alignment = .leading; buttons.spacing = 8
+        let buttons = NSStackView(views: [refreshButton, addVirtualButton, settingsButton])
+        buttons.orientation = .vertical; buttons.alignment = .width; buttons.spacing = 8
         buttons.translatesAutoresizingMaskIntoConstraints = false
 
         content.translatesAutoresizingMaskIntoConstraints = false
@@ -98,6 +105,7 @@ final class LeftSidebarView: NSView {
             scroll.topAnchor.constraint(equalTo: content.topAnchor),
             scroll.bottomAnchor.constraint(equalTo: buttons.topAnchor, constant: -8),
             buttons.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 14),
+            buttons.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -14),
             buttons.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12),
 
             expandButton.centerXAnchor.constraint(equalTo: centerXAnchor, constant: -0.5),

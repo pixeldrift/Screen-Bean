@@ -191,19 +191,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let centerButton = NSButton(title: "Center View", target: mainView, action: #selector(DisplayArrangementView.centerView))
         let fitButton = NSButton(title: "Zoom to Fit", target: mainView, action: #selector(DisplayArrangementView.zoomToFitFromButton))
-        centerButton.bezelStyle = .rounded
-        fitButton.bezelStyle = .rounded
+        for (button, symbol) in [(centerButton, "scope"), (fitButton, "arrow.up.left.and.down.right.magnifyingglass")] {
+            button.bezelStyle = .rounded
+            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: button.title)
+            button.imagePosition = .imageLeading
+        }
         let buttonStack = NSStackView(views: [centerButton, fitButton])
         buttonStack.orientation = .horizontal
         buttonStack.spacing = 8
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
-
-        let settingsButton = NSButton(title: "Display Settings…", target: self, action: #selector(openDisplaySettings))
-        settingsButton.bezelStyle = .rounded
-        let systemButtonStack = NSStackView(views: [settingsButton])
-        systemButtonStack.orientation = .horizontal
-        systemButtonStack.spacing = 8
-        systemButtonStack.translatesAutoresizingMaskIntoConstraints = false
 
         // Identify and preview are modes that end on any click or key press.
         sidebarView = sidebar
@@ -231,6 +227,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         left.displaysPanel.update(mainView.displaySummaries(), selected: mainView.selectedDisplayIDs)
         left.refreshButton.target = self; left.refreshButton.action = #selector(refreshDisplays)
         left.addVirtualButton.target = self; left.addVirtualButton.action = #selector(addVirtualDisplay)
+        left.settingsButton.target = self; left.settingsButton.action = #selector(openDisplaySettings)
         sidebar.exportTemplateButton.target = self
         sidebar.exportTemplateButton.action = #selector(exportTemplate)
         sidebar.applyWallpaperButton.target = self
@@ -243,7 +240,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         container.addSubview(left)
         container.addSubview(sidebar)
         container.addSubview(buttonStack)
-        container.addSubview(systemButtonStack)
 
         // The rulers run down the workspace's left edge, so the buttons sit clear of them.
         let buttonLeading = buttonStack.leadingAnchor.constraint(equalTo: mainView.leadingAnchor)
@@ -263,9 +259,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             sidebar.topAnchor.constraint(equalTo: container.topAnchor),
             sidebar.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             sidebar.widthAnchor.constraint(equalToConstant: SidebarMetrics.width),
-            buttonStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
-            systemButtonStack.trailingAnchor.constraint(equalTo: mainView.trailingAnchor, constant: -12),
-            systemButtonStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12)
+            buttonStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12)
         ])
 
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 680), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
