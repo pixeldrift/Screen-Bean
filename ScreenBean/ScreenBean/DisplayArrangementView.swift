@@ -1245,14 +1245,15 @@ class DisplayArrangementView: NSView {
                 path.move(to: CGPoint(x: x, y: 0)); path.line(to: CGPoint(x: x, y: bounds.maxY - rulerSize))
             }
             // Dotted in the workspace, so they read differently from the solid lines drawn on the real screens.
+            // Edge and custom guides share one dot size; a hovered or selected custom guide is a little bigger.
             path.lineCapStyle = .round
             path.setLineDash([0.1, 4.5], count: 2, phase: 0)
             // A dark dot underneath keeps the guide visible over bright displays and images.
             NSColor.black.withAlphaComponent(0.4).setStroke()
-            path.lineWidth = isActive ? 4.5 : 3.5
+            path.lineWidth = isActive ? 5.5 : 4.5
             path.stroke()
             guide.color.setStroke()
-            path.lineWidth = isActive ? 3 : 2
+            path.lineWidth = isActive ? 4 : 3
             path.stroke()
         }
     }
