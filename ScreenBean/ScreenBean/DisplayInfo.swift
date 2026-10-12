@@ -67,6 +67,13 @@ struct DisplayInfo {
     var isVirtual: Bool = false
     /// When on, this display stays in the layout as a stand-in while it is unplugged.
     var keepWhenDisconnected: Bool = false
+    /// While on, changing one measurement keeps the shape: the others follow.
+    var aspectLocked: Bool = false
+
+    /// True when the size has been changed from what macOS reported.
+    var differsFromDetected: Bool {
+        abs(physicalWidthInches - detectedWidthInches) > 0.005 || abs(physicalHeightInches - detectedHeightInches) > 0.005
+    }
     /// A stand-in for a display that was connected before: virtual on screen, but it keeps that display's identity
     /// and takes over again when the display is plugged back in.
     var isRemembered: Bool { isVirtual && !persistentID.hasPrefix(VirtualDisplayStore.idPrefix) }
@@ -297,7 +304,8 @@ struct DisplayInfo {
             isVirtual: isVirtual && !isRemembered,
             pixelWidth: pixelWidth,
             pixelHeight: pixelHeight,
-            keepWhenDisconnected: keepWhenDisconnected
+            keepWhenDisconnected: keepWhenDisconnected,
+            aspectLocked: aspectLocked
         )
     }
 
@@ -327,6 +335,7 @@ struct DisplayInfo {
         showBezel = configuration.showBezel
         isLocked = configuration.isLocked
         keepWhenDisconnected = configuration.keepWhenDisconnected
+        aspectLocked = configuration.aspectLocked
     }
 }
 

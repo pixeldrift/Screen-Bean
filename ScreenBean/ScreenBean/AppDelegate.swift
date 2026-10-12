@@ -6,6 +6,7 @@
 
 import Cocoa
 import CoreGraphics
+import UniformTypeIdentifiers
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow!
@@ -222,6 +223,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self.mainView = mainView
         sidebar.exportImagesButton.target = self
         sidebar.exportImagesButton.action = #selector(exportWallpaperImages)
+        sidebar.exportTemplateButton.target = self
+        sidebar.exportTemplateButton.action = #selector(exportTemplate)
         sidebar.applyWallpaperButton.target = self
         sidebar.applyWallpaperButton.action = #selector(applyWallpaper)
 
@@ -605,6 +608,42 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     /// Saves one PNG per display, named after the display and sized to its native resolution.
+    /// Saves the layout as a PNG or SVG at wallpaper scale, to design a spanned wallpaper over.
+    @objc private func exportTemplate() {
+        guard let template = mainView?.layoutTemplate() else {
+            showAlert("Nothing to export", "There are no displays in the layout.")
+            return
+        }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Screen Bean Template"
+        panel.message = "Saves each screen at its real position and size, with the gaps left empty."
+        panel.allowedContentTypes = [.png]
+        let format = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 120, height: 26), pullsDown: false)
+        format.addItems(withTitles: ["PNG", "SVG"])
+        let label = NSTextField(labelWithString: "Format:")
+        let accessory = NSStackView(views: [label, format])
+        accessory.spacing = 8
+        accessory.edgeInsets = NSEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
+        panel.accessoryView = accessory
+        let formatHandler = FormatChoice(panel: panel, popup: format)
+        format.target = formatHandler; format.action = #selector(FormatChoice.changed)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        withExtendedLifetime(formatHandler) {}   // the menu's target is weak, so keep it alive through the panel
+        do {
+            let isSVG = format.indexOfSelectedItem == 1
+            if isSVG {
+                guard let text = template.svg() else { throw CocoaError(.fileWriteUnknown) }
+                try text.write(to: url, atomically: true, encoding: .utf8)
+            } else {
+                guard let data = template.pngData() else { throw CocoaError(.fileWriteUnknown) }
+                try data.write(to: url, options: .atomic)
+            }
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            showAlert("Could not save the template", error.localizedDescription, style: .warning)
+        }
+    }
+
     @objc private func exportWallpaperImages() {
         guard let export = wallpaperExportOrAlert() else { return }
         let panel = NSOpenPanel()
@@ -685,5 +724,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         for string in urls {
             if let url = URL(string: string), NSWorkspace.shared.open(url) { return }
         }
+    }
+}
+
+/// Keeps a save panel's file type in step with its format menu.
+final class FormatChoice: NSObject {
+    private weak var panel: NSSavePanel?
+    private let popup: NSPopUpButton
+
+    init(panel: NSSavePanel, popup: NSPopUpButton) {
+        self.panel = panel
+        self.popup = popup
+    }
+
+    @objc func changed() {
+        panel?.allowedContentTypes = popup.indexOfSelectedItem == 1 ? [.svg] : [.png]
     }
 }

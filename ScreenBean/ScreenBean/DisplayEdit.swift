@@ -13,7 +13,7 @@ struct DisplayEdit {
     var undoKey: String {
         [("n", nickname != nil), ("w", width != nil), ("h", height != nil), ("x", x != nil), ("y", y != nil), ("c", color != nil),
          ("u", uniformBezel != nil), ("bu", bezelUniform != nil), ("bt", bezelTop != nil), ("bb", bezelBottom != nil),
-         ("bl", bezelLeft != nil), ("br", bezelRight != nil), ("bc", bezelColor != nil), ("sb", showBezel != nil), ("l", isLocked != nil), ("k", keepWhenDisconnected != nil)]
+         ("bl", bezelLeft != nil), ("br", bezelRight != nil), ("bc", bezelColor != nil), ("sb", showBezel != nil), ("l", isLocked != nil), ("k", keepWhenDisconnected != nil), ("d", diagonal != nil), ("a", aspect != nil), ("al", aspectLocked != nil), ("r", resetToDetected != nil)]
             .filter { $0.1 }.map { $0.0 }.joined(separator: ",")
     }
 
@@ -33,4 +33,11 @@ struct DisplayEdit {
     var showBezel: Bool?
     var isLocked: Bool?
     var keepWhenDisconnected: Bool?
+    /// Screen diagonal in inches. The shape stays the same.
+    var diagonal: Double?
+    /// Width divided by height. The diagonal stays the same.
+    var aspect: Double?
+    var aspectLocked: Bool?
+    /// Put the size back to what macOS reported.
+    var resetToDetected: Bool?
 }

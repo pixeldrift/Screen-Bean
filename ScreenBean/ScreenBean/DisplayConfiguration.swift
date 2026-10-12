@@ -38,6 +38,8 @@ struct DisplayConfiguration: Codable {
     var pixelHeight: Int
     /// A connected display kept in the layout, as a virtual stand-in, while it is unplugged.
     var keepWhenDisconnected: Bool
+    /// While on, changing one measurement keeps the shape: the others follow.
+    var aspectLocked: Bool
 
     init(
         persistentID: String,
@@ -62,7 +64,8 @@ struct DisplayConfiguration: Codable {
         isVirtual: Bool = false,
         pixelWidth: Int = 1920,
         pixelHeight: Int = 1080,
-        keepWhenDisconnected: Bool = false
+        keepWhenDisconnected: Bool = false,
+        aspectLocked: Bool = false
     ) {
         self.persistentID = persistentID
         self.nickname = nickname
@@ -87,13 +90,14 @@ struct DisplayConfiguration: Codable {
         self.pixelWidth = pixelWidth
         self.pixelHeight = pixelHeight
         self.keepWhenDisconnected = keepWhenDisconnected
+        self.aspectLocked = aspectLocked
     }
 
     private enum CodingKeys: String, CodingKey {
         case persistentID, nickname, widthInches, heightInches
         case xInches, yInches, rotation, isCalibrated
         case colorHex, isColorCustom, uniformBezel, bezelUniform, bezelTop, bezelBottom, bezelLeft, bezelRight
-        case bezelColorHex, showBezel, isLocked, isVirtual, pixelWidth, pixelHeight, keepWhenDisconnected
+        case bezelColorHex, showBezel, isLocked, isVirtual, pixelWidth, pixelHeight, keepWhenDisconnected, aspectLocked
     }
 
     init(from decoder: Decoder) throws {
@@ -123,5 +127,6 @@ struct DisplayConfiguration: Codable {
         pixelWidth = try values.decodeIfPresent(Int.self, forKey: .pixelWidth) ?? 1920
         pixelHeight = try values.decodeIfPresent(Int.self, forKey: .pixelHeight) ?? 1080
         keepWhenDisconnected = try values.decodeIfPresent(Bool.self, forKey: .keepWhenDisconnected) ?? false
+        aspectLocked = try values.decodeIfPresent(Bool.self, forKey: .aspectLocked) ?? false
     }
 }

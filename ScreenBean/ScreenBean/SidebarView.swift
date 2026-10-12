@@ -17,6 +17,7 @@ final class SidebarView: NSView {
     let liveCheckbox = NSButton(checkboxWithTitle: "Live", target: nil, action: nil)
     let exportImagesButton = NSButton(title: "Export Slices", target: nil, action: nil)
     let applyWallpaperButton = NSButton(title: "Apply Wallpaper", target: nil, action: nil)
+    let exportTemplateButton = NSButton(title: "Export Template…", target: nil, action: nil)
 
     private let toolsContainer = NSView()
 
@@ -45,7 +46,8 @@ final class SidebarView: NSView {
         let previewRow = NSStackView(views: [previewWallpaperButton, liveCheckbox])
         previewRow.spacing = 10
         previewRow.alignment = .centerY
-        let buttons = NSStackView(views: [previewRow, exportRow])
+        exportTemplateButton.toolTip = "Save a PNG or SVG of the layout at wallpaper scale, to design a wallpaper over in an image editor."
+        let buttons = NSStackView(views: [previewRow, exportRow, exportTemplateButton])
         buttons.orientation = .vertical; buttons.alignment = .leading; buttons.spacing = 8
 
         let stack = NSStackView(views: [settingsPanel, topDivider, referenceImagePanel, divider, wallpaperPanel, buttons])

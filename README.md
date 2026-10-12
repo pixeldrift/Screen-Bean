@@ -508,9 +508,9 @@ Organized by topic. Checked items are built.
 ### Display Settings
 
 * [x]	Edit physical dimensions, position, name, color and bezels
-* [ ]	Show detected vs. calibrated size, with a Reset to detected button
-* [ ]	Allow entering the diagonal measurement
-* [ ]	Add Aspect Ratio, with a lock; recalculate the other sizes when one measurement is edited
+* [x]	Show detected vs. calibrated size, with a Reset to detected button
+* [x]	Allow entering the diagonal measurement
+* [x]	Add Aspect Ratio, with a lock; recalculate the other sizes when one measurement is edited
 * [ ]	Rotate clockwise and counterclockwise, plus horizontal and vertical flip, in Screen Bean's layout
 
 macOS has no public API for changing a display's rotation, so the rotation and flip items edit Screen Bean's own layout. Detection from System Settings already works.
@@ -556,7 +556,7 @@ macOS has no public API for changing a display's rotation, so the rotation and f
 
 ### Export & Documentation
 
-* [ ]	Export PNG/SVG template
+* [x]	Export PNG/SVG template
 
 ### Backlog
 

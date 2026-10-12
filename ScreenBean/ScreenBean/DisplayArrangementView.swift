@@ -1908,6 +1908,20 @@ class DisplayArrangementView: NSView {
         return WallpaperExport(slices: slices, imagePixelsPerInch: Double(cgImage.width) / Double(imageRect.width), neededPixelsPerInch: neededPPI)
     }
 
+    // MARK: - Template
+    /// The layout as a flat template for designing a wallpaper over: each screen where it sits, at real size.
+    func layoutTemplate() -> LayoutTemplate? {
+        let panels = physicalLayout.displays.enumerated().compactMap { index, placed -> LayoutTemplate.Panel? in
+            guard let info = displays.first(where: { $0.displayID == placed.id }) else { return nil }
+            return LayoutTemplate.Panel(
+                label: DisplayIdentity.label(forIndex: index), name: info.nickname,
+                rect: CGRect(x: placed.x, y: placed.y, width: placed.width, height: placed.height),
+                pixelWidth: info.pixelWidth, pixelHeight: info.pixelHeight, colorHex: info.colorHex
+            )
+        }
+        return panels.isEmpty ? nil : LayoutTemplate(panels: panels)
+    }
+
     // MARK: - Layout Presets
     /// Everything a preset keeps, as the workspace is now.
     func makePreset(named name: String) -> LayoutPreset {
@@ -2325,7 +2339,10 @@ class DisplayArrangementView: NSView {
                     isImage = true
                 }
                 // Proportional by default; Shift unlinks width and height.
-                let keepAspect = !flags.contains(.shift)
+                // A display with its aspect locked ignores Shift.
+                var aspectLocked = false
+                if case .display(let id) = dragTarget { aspectLocked = displays.first(where: { $0.displayID == id })?.aspectLocked == true }
+                let keepAspect = !flags.contains(.shift) || aspectLocked
                 // Scaling is around the center by default; Option anchors the opposite corner or edge instead.
                 let fromCenter = !flags.contains(.option)
                 let turn = rotation(of: dragTarget)
@@ -2489,8 +2506,28 @@ class DisplayArrangementView: NSView {
         if let nickname = edit.nickname, !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { displays[i].nickname = nickname; physicalLayout.displays[j].nickname = nickname }
         // Position is the display's center, so resizing grows it evenly around that point.
         let center = CGPoint(x: physicalLayout.displays[j].centerX, y: physicalLayout.displays[j].centerY)
-        if let width = edit.width, width > 0.1 { displays[i].physicalWidthInches = width; physicalLayout.displays[j].width = CGFloat(width) }
-        if let height = edit.height, height > 0.1 { displays[i].physicalHeightInches = height; physicalLayout.displays[j].height = CGFloat(height) }
+        if let locked = edit.aspectLocked { displays[i].aspectLocked = locked }
+        // Work out the new size from whichever measurement changed. With the aspect locked, the others follow.
+        var newWidth = displays[i].physicalWidthInches, newHeight = displays[i].physicalHeightInches
+        let shape = newWidth / max(newHeight, 0.0001)
+        if edit.resetToDetected == true { newWidth = displays[i].detectedWidthInches; newHeight = displays[i].detectedHeightInches }
+        if let width = edit.width, width > 0.1 { newWidth = width; if displays[i].aspectLocked { newHeight = width / shape } }
+        if let height = edit.height, height > 0.1 { newHeight = height; if displays[i].aspectLocked { newWidth = height * shape } }
+        if let diagonal = edit.diagonal, diagonal > 0.1 {
+            let ratio = newWidth / max(newHeight, 0.0001)
+            newHeight = diagonal / (1 + ratio * ratio).squareRoot()
+            newWidth = newHeight * ratio
+        }
+        if let aspect = edit.aspect, aspect > 0.05 {
+            let diagonal = (newWidth * newWidth + newHeight * newHeight).squareRoot()
+            newHeight = diagonal / (1 + aspect * aspect).squareRoot()
+            newWidth = newHeight * aspect
+        }
+        if newWidth > 0.1, newHeight > 0.1, newWidth != displays[i].physicalWidthInches || newHeight != displays[i].physicalHeightInches {
+            displays[i].physicalWidthInches = newWidth; physicalLayout.displays[j].width = CGFloat(newWidth)
+            displays[i].physicalHeightInches = newHeight; physicalLayout.displays[j].height = CGFloat(newHeight)
+            if !displays[i].isVirtual { displays[i].isCalibrated = displays[i].differsFromDetected }
+        }
         physicalLayout.displays[j].x = (edit.x.map { CGFloat($0) } ?? center.x) - physicalLayout.displays[j].width / 2
         physicalLayout.displays[j].y = (edit.y.map { CGFloat($0) } ?? center.y) - physicalLayout.displays[j].height / 2
         if let color = edit.color { displays[i].isColorCustom = true; displays[i].colorHex = color.displayHex; physicalLayout.displays[j].colorHex = color.displayHex }

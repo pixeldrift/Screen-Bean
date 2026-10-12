@@ -29,6 +29,14 @@ final class DisplayInspectorView: NSView {
     private let height = NumberInput()
     private let x = NumberInput()
     private let y = NumberInput()
+    private let diagonal = NumberInput()
+    private let aspectField = NSTextField(string: "")
+    private let aspectLockButton = NSButton()
+    private var aspectIsLocked = false
+    private var shownAspect = ""
+    private let detectedLabel = NSTextField(labelWithString: "")
+    private let resetButton = NSButton(title: "Reset to Detected", target: nil, action: nil)
+    private var detectedRow: NSView!
     private let uniform = NSButton(checkboxWithTitle: "Uniform", target: nil, action: nil)
     private let bezel = NumberInput()
     private let slider = NSSlider(value: DisplayDefaults.bezelInches, minValue: 0, maxValue: 2, target: nil, action: nil)
@@ -81,12 +89,14 @@ final class DisplayInspectorView: NSView {
         detected.font = .systemFont(ofSize: 11); detected.textColor = .secondaryLabelColor
 
         // Inputs.
-        for input in [width, height, x, y] { input.step = 0.1 }
+        for input in [width, height, x, y, diagonal] { input.step = 0.1 }
+        diagonal.minimum = 0.1
         width.minimum = 0.1; height.minimum = 0.1
         x.minimum = -100000; y.minimum = -100000
         for input in [bezel, top, bottom, left, right] { input.step = 0.05 }
         width.onChange = { [weak self] in self?.emit(DisplayEdit(width: $0)) }
         height.onChange = { [weak self] in self?.emit(DisplayEdit(height: $0)) }
+        diagonal.onChange = { [weak self] in self?.emit(DisplayEdit(diagonal: $0)) }
         x.onChange = { [weak self] in self?.emit(DisplayEdit(x: $0)) }
         y.onChange = { [weak self] in self?.emit(DisplayEdit(y: $0)) }
         bezel.onChange = { [weak self] in self?.setUniformBezel($0) }
@@ -115,8 +125,38 @@ final class DisplayInspectorView: NSView {
             grid(valueCell("Native Resolution", resolution), valueCell("Pixel Density", ppi)),
             grid(valueCell("Display Role", role), valueCell("Orientation", orientation))
         ], spacing: 8)
+        // Aspect ratio: a text field ("16:9" or "1.78") and a lock that keeps the shape while sizes change.
+        aspectField.placeholderString = "16:9"
+        aspectField.target = self; aspectField.action = #selector(aspectEdited)
+        aspectField.delegate = ReturnCommitDelegate.shared
+        aspectField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        aspectLockButton.isBordered = false
+        aspectLockButton.imageScaling = .scaleProportionallyUpOrDown
+        aspectLockButton.target = self; aspectLockButton.action = #selector(aspectLockToggled)
+        aspectLockButton.widthAnchor.constraint(equalToConstant: 14).isActive = true
+        aspectLockButton.heightAnchor.constraint(equalToConstant: 14).isActive = true
+        let aspectCaption = NSTextField(labelWithString: "Aspect Ratio")
+        aspectCaption.font = .systemFont(ofSize: 11)
+        let aspectHeader = NSStackView(views: [aspectCaption, aspectLockButton, NSView()])
+        aspectHeader.spacing = 4
+        aspectHeader.distribution = .fill
+        let aspectCell = stack([aspectHeader, aspectField], spacing: 4)
+        updateAspectLockButton()
+        // What macOS reported, and a way back to it once the size has been changed.
+        detectedLabel.font = .systemFont(ofSize: 10); detectedLabel.textColor = .secondaryLabelColor
+        detectedLabel.lineBreakMode = .byTruncatingTail
+        detectedLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        resetButton.bezelStyle = .rounded; resetButton.controlSize = .small
+        resetButton.target = self; resetButton.action = #selector(resetToDetected)
+        let detectedStack = NSStackView(views: [detectedLabel, NSView(), resetButton])
+        detectedStack.spacing = 6
+        detectedStack.distribution = .fill
+        detectedRow = detectedStack
+        detectedRow.isHidden = true
         let dimensions = section("Dimensions & Position", [
             grid(cell("Width", "inches", width), cell("Height", "inches", height)),
+            grid(cell("Diagonal", "inches", diagonal), aspectCell),
+            detectedRow,
             grid(cell("X-Pos", "inches", x), cell("Y-Pos", "inches", y))
         ])
 
@@ -236,7 +276,8 @@ final class DisplayInspectorView: NSView {
             virtualSection.isHidden = true
             connectionSection.isHidden = true
             nickname.stringValue = ""; detected.stringValue = ""
-            for input in [width, height, x, y, bezel, top, bottom, left, right] { input.clear() }
+            for input in [width, height, diagonal, x, y, bezel, top, bottom, left, right] { input.clear() }
+            aspectField.stringValue = ""; detectedRow.isHidden = true
             resolution.stringValue = "—"; ppi.stringValue = "—"; role.stringValue = "—"; orientation.stringValue = "—"
             isLocked = false
             updateLockButton(); applyEnabled()
@@ -247,6 +288,14 @@ final class DisplayInspectorView: NSView {
         if nickname.currentEditor() == nil { nickname.stringValue = d.nickname }
         detected.stringValue = d.isRemembered ? "(disconnected)" : d.isVirtual ? "(virtual display)" : "(" + DisplayInfo.displayName(for: d.displayID) + ")"
         width.value = d.physicalWidthInches; height.value = d.physicalHeightInches
+        diagonal.value = (d.physicalWidthInches * d.physicalWidthInches + d.physicalHeightInches * d.physicalHeightInches).squareRoot()
+        shownAspect = AspectRatio.string(d.physicalWidthInches / max(d.physicalHeightInches, 0.0001))
+        if aspectField.currentEditor() == nil { aspectField.stringValue = shownAspect }
+        aspectIsLocked = d.aspectLocked
+        updateAspectLockButton()
+        let showDetected = !d.isVirtual && d.differsFromDetected
+        detectedRow.isHidden = !showDetected
+        detectedLabel.stringValue = "Detected \(MeasurementFormat.string(d.detectedWidthInches)) × \(MeasurementFormat.string(d.detectedHeightInches)) in"
         x.value = Double(px); y.value = Double(py)
         uniform.state = d.uniformBezel ? .on : .off
         bezel.value = d.bezelUniform; slider.doubleValue = d.bezelUniform
@@ -274,7 +323,8 @@ final class DisplayInspectorView: NSView {
     /// Everything except the lock is read-only while the display is locked or nothing is selected.
     private func applyEnabled() {
         let editable = hasDisplay && !isLocked
-        for input in [width, height, x, y, top, bottom, left, right] { input.isEnabled = editable }
+        for input in [width, height, diagonal, x, y, top, bottom, left, right] { input.isEnabled = editable }
+        aspectField.isEnabled = editable; aspectLockButton.isEnabled = editable; resetButton.isEnabled = editable
         // The single size is hidden, not just disabled, while individual sides are shown.
         bezel.isEnabled = editable
         nickname.isEnabled = editable; uniform.isEnabled = editable; slider.isEnabled = editable
@@ -317,6 +367,21 @@ final class DisplayInspectorView: NSView {
     @objc private func keepChanged() { emit(DisplayEdit(keepWhenDisconnected: keepCheckbox.state == .on)) }
     @objc private func deleteVirtualTapped() { onDeleteVirtual?() }
     private func emit(_ edit: DisplayEdit) { onChange?(edit) }
+    @objc private func aspectEdited() {
+        // Text that isn't a ratio puts the current one back.
+        guard let ratio = AspectRatio.parse(aspectField.stringValue) else {
+            aspectField.stringValue = shownAspect
+            return
+        }
+        emit(DisplayEdit(aspect: ratio))
+    }
+    @objc private func aspectLockToggled() { emit(DisplayEdit(aspectLocked: !aspectIsLocked)) }
+    @objc private func resetToDetected() { emit(DisplayEdit(resetToDetected: true)) }
+    private func updateAspectLockButton() {
+        aspectLockButton.image = NSImage(systemSymbolName: aspectIsLocked ? "lock.fill" : "lock.open", accessibilityDescription: aspectIsLocked ? "Unlock aspect ratio" : "Lock aspect ratio")
+        aspectLockButton.contentTintColor = aspectIsLocked ? .labelColor : .secondaryLabelColor
+        aspectLockButton.toolTip = aspectIsLocked ? "Aspect ratio locked – changing one size changes the other" : "Lock the aspect ratio so changing one size changes the other"
+    }
     @objc private func lockToggled() { emit(DisplayEdit(isLocked: !isLocked)) }
     @objc private func nameChanged() { emit(DisplayEdit(nickname: nickname.stringValue)) }
     @objc private func uniformChanged() { emit(DisplayEdit(uniformBezel: uniform.state == .on)) }

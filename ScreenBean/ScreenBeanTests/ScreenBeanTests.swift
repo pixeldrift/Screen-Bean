@@ -73,3 +73,19 @@ struct ScreenBeanTests {
         #expect(MeasurementFormat.decimalString(24) == "24.0")
     }
 }
+
+struct AspectRatioTests {
+    @Test func namesFamiliarShapes() {
+        #expect(AspectRatio.string(16.0 / 9.0) == "16:9")
+        #expect(AspectRatio.string(9.0 / 16.0) == "9:16")
+        #expect(AspectRatio.string(1.43) == "1.43:1")
+    }
+
+    @Test func readsRatiosAsTyped() {
+        #expect(AspectRatio.parse("16:9") == 16.0 / 9.0)
+        #expect(AspectRatio.parse("16 x 9") == 16.0 / 9.0)
+        #expect(AspectRatio.parse("1.5") == 1.5)
+        #expect(AspectRatio.parse("wide") == nil)
+        #expect(AspectRatio.parse("0:9") == nil)
+    }
+}
