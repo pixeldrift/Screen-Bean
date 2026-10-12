@@ -51,6 +51,12 @@ struct ScreenBeanTests {
         #expect(MeasurementFormat.parse("24 in") == 24)
     }
 
+    @Test func understandsMetricUnitsTypedAfterANumber() {
+        #expect(MeasurementFormat.parse("2.54 cm") == 1)
+        #expect(MeasurementFormat.parse("25.4mm") == 1)
+        #expect(MeasurementFormat.parse("-5.08 centimeters") == -2)
+    }
+
     @Test func rejectsNonMeasurements() {
         #expect(MeasurementFormat.parse("") == nil)
         #expect(MeasurementFormat.parse("abc") == nil)

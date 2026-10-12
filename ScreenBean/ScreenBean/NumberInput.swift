@@ -93,7 +93,7 @@ final class NumberInput: NSView {
         return stack
     }
 
-    private func updateStep() { stepper.increment = MeasurementFormat.step(decimal: step) }
+    private func updateStep() { stepper.increment = isMeasurement ? MeasurementFormat.step(decimal: step) : step }
 
     @objc private func formatChanged() {
         updateStep()
@@ -103,7 +103,7 @@ final class NumberInput: NSView {
     /// Applies a drag change, respecting the minimum. Fraction mode snaps to a 16th.
     func nudge(by delta: Double) {
         var next = value + delta
-        if isMeasurement && MeasurementFormat.useFractions { next = MeasurementFormat.roundedToFraction(next) }
+        if isMeasurement && MeasurementFormat.showsFractions { next = MeasurementFormat.roundedToFraction(next) }
         value = max(minimum, next)
         onChange?(value)
     }
@@ -128,19 +128,35 @@ final class NumberInput: NSView {
 }
 
 /// A caption that changes a `NumberInput` when dragged left or right.
+/// A measurement's caption shows the current unit and follows changes to it.
 final class ScrubLabel: NSTextField {
     weak var input: NumberInput?
     var scrubScale = 0.05
     private var lastX: CGFloat = 0
+    private var caption = ""
+    private var fixedUnit: String?
 
     convenience init(_ text: String, unit: String? = nil, input: NumberInput) {
         self.init(labelWithString: text)
         self.input = input
-        let attributed = NSMutableAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.labelColor])
+        caption = text
+        fixedUnit = unit
+        refresh()
+        NotificationCenter.default.addObserver(self, selector: #selector(refresh), name: MeasurementFormat.didChange, object: nil)
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func refresh() {
+        let kept = alignment
+        let attributed = NSMutableAttributedString(string: caption, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.labelColor])
+        // A unit given for a measurement is a placeholder for whichever unit is chosen.
+        let unit = (input?.isMeasurement == true && fixedUnit != nil) ? MeasurementFormat.unitName : fixedUnit
         if let unit {
             attributed.append(NSAttributedString(string: " (\(unit))", attributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: NSColor.secondaryLabelColor]))
         }
         attributedStringValue = attributed
+        alignment = kept
     }
 
     override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeLeftRight) }

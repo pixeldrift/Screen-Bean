@@ -464,7 +464,8 @@ class DisplayArrangementView: NSView {
     private func drawGrid(
         in context: CGContext
     ) {
-        let gridSpacingInches: CGFloat = 1.0
+        // One inch, or one centimeter.
+        let gridSpacingInches = CGFloat(MeasurementFormat.inchesPerUnit)
         let spacing =
             gridSpacingInches * pointsPerInch
 
@@ -684,7 +685,7 @@ class DisplayArrangementView: NSView {
         let detailSize = min(max(rect.height * 0.045, 8), 12)
         var lines: [(text: String, attributes: [NSAttributedString.Key: Any])] = [(display.nickname, attributes(nameSize, weight: .semibold))]
         if let info { lines.append(("\(info.pixelWidth) × \(info.pixelHeight) px", attributes(detailSize, weight: .regular))) }
-        lines.append(("\(MeasurementFormat.string(Double(display.width))) × \(MeasurementFormat.string(Double(display.height))) in", attributes(detailSize, weight: .regular)))
+        lines.append((MeasurementFormat.pair(Double(display.width), Double(display.height)), attributes(detailSize, weight: .regular)))
 
         // The caption is centered between the bottom of the circle and the bottom of the display.
         let box = CGRect(x: rect.minX + 8, y: rect.minY + 6, width: max(rect.width - 16, 1), height: max(circle.minY - rect.minY - 12, 1))
@@ -1259,7 +1260,7 @@ class DisplayArrangementView: NSView {
     /// While a guide is dragged, its position is shown next to the cursor.
     private func drawGuideDragLabel() {
         guard let guideDrag, let guide = GuideStore.shared.guide(withID: guideDrag) else { return }
-        let text = "\(MeasurementFormat.string(guide.position)) in" as NSString
+        let text = MeasurementFormat.withUnit(guide.position) as NSString
         let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor.white]
         let size = text.size(withAttributes: attributes)
         let origin = CGPoint(x: min(guideDragPoint.x + 14, bounds.maxX - size.width - 14), y: min(max(guideDragPoint.y - size.height - 10, 4), bounds.maxY - size.height - 4))
@@ -1273,14 +1274,18 @@ class DisplayArrangementView: NSView {
     /// Width of the ruler strips; zero while rulers are hidden.
     private var rulerSize: CGFloat { GuideSettings.showRulers ? 20 : 0 }
 
-    /// Spacing between labeled ruler ticks, in inches, chosen for the current zoom.
+    /// Spacing between labeled ruler ticks, in the chosen unit, chosen for the current zoom.
     private func rulerMajorSpacing() -> Double {
-        let candidates: [Double] = [0.0625, 0.125, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]
-        return candidates.first { $0 * Double(pointsPerInch) >= 70 } ?? 1000
+        let candidates: [Double] = MeasurementFormat.unit == .inches
+            ? [0.0625, 0.125, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]
+            : [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]
+        let pointsPerUnit = Double(pointsPerInch) * MeasurementFormat.inchesPerUnit
+        return candidates.first { $0 * pointsPerUnit >= 70 } ?? 1000
     }
 
+    /// A ruler label for a value in the chosen unit.
     private func rulerLabel(_ value: Double) -> String {
-        MeasurementFormat.useFractions ? MeasurementFormat.fractionString(value) : String(format: "%g", (value * 10000).rounded() / 10000)
+        MeasurementFormat.showsFractions ? MeasurementFormat.fractionString(value) : String(format: "%g", (value * 10000).rounded() / 10000)
     }
 
     private func drawRulers() {
@@ -1298,9 +1303,10 @@ class DisplayArrangementView: NSView {
         edges.stroke()
 
         let major = rulerMajorSpacing()
-        let divisions: Double = major < 1 ? 4 : 5
+        let divisions: Double = major < 1 && MeasurementFormat.unit == .inches ? 4 : 5
         let minor = major / divisions
-        let scale = Double(pointsPerInch)
+        // View points per shown unit; ruler values are in that unit.
+        let scale = Double(pointsPerInch) * MeasurementFormat.inchesPerUnit
         let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 8), .foregroundColor: NSColor.secondaryLabelColor]
         let tickPath = NSBezierPath()
         tickPath.lineWidth = 1
@@ -1432,7 +1438,7 @@ class DisplayArrangementView: NSView {
 
     private func gapLabel(_ m: GapMeasurement) -> NSAttributedString {
         NSAttributedString(
-            string: "\(MeasurementFormat.string(Double(m.gap))) in",
+            string: MeasurementFormat.withUnit(Double(m.gap)),
             attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor.white]
         )
     }

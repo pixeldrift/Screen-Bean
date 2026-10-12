@@ -44,7 +44,7 @@ struct LayoutTemplate {
     }
 
     private func detail(_ panel: Panel) -> String {
-        "\(panel.pixelWidth) × \(panel.pixelHeight) px  ·  \(MeasurementFormat.string(Double(panel.rect.width))) × \(MeasurementFormat.string(Double(panel.rect.height))) in"
+        "\(panel.pixelWidth) × \(panel.pixelHeight) px  ·  " + MeasurementFormat.pair(Double(panel.rect.width), Double(panel.rect.height))
     }
 
     // MARK: - PNG
@@ -70,13 +70,15 @@ struct LayoutTemplate {
         (color.blended(withFraction: 0.45, of: .white) ?? color).setFill()
         rect.fill()
 
-        // A one-inch grid, so sizes can be read straight off the image.
+        // A grid of one inch (or one centimeter), so sizes can be read straight off the image.
         let ppi = CGFloat(pixelsPerInch)
+        let cell = CGFloat(MeasurementFormat.inchesPerUnit)
+        let step = ppi * cell
         let grid = NSBezierPath()
-        var x = (ceil(panel.rect.minX) - panel.rect.minX) * ppi
-        while x < rect.width { grid.move(to: CGPoint(x: rect.minX + x, y: rect.minY)); grid.line(to: CGPoint(x: rect.minX + x, y: rect.maxY)); x += ppi }
-        var y = (ceil(panel.rect.minY) - panel.rect.minY) * ppi
-        while y < rect.height { grid.move(to: CGPoint(x: rect.minX, y: rect.minY + y)); grid.line(to: CGPoint(x: rect.maxX, y: rect.minY + y)); y += ppi }
+        var x = (ceil(panel.rect.minX / cell) * cell - panel.rect.minX) * ppi
+        while x < rect.width { grid.move(to: CGPoint(x: rect.minX + x, y: rect.minY)); grid.line(to: CGPoint(x: rect.minX + x, y: rect.maxY)); x += step }
+        var y = (ceil(panel.rect.minY / cell) * cell - panel.rect.minY) * ppi
+        while y < rect.height { grid.move(to: CGPoint(x: rect.minX, y: rect.minY + y)); grid.line(to: CGPoint(x: rect.maxX, y: rect.minY + y)); y += step }
         grid.lineWidth = max(1, base / 600)
         NSColor.black.withAlphaComponent(0.12).setStroke()
         grid.stroke()

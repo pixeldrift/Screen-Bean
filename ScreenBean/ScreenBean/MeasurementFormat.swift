@@ -2,8 +2,10 @@
 //  MeasurementFormat.swift
 //  ScreenBean
 //
-//  How measurements in inches are shown and typed: decimals ("23.125") or
-//  fractions to the nearest 16th ("23 1/8"). Either form can always be typed.
+//  How measurements are shown and typed. Everything is stored in inches; the unit setting
+//  (inches or centimeters) only changes how values are shown and read. Inches can be shown as
+//  decimals ("23.125") or fractions to the nearest 16th ("23 1/8"); either can always be typed.
+//  A unit typed after a number ("60 cm", "600 mm", "24 in") is always understood.
 //
 
 import Foundation
@@ -16,6 +18,33 @@ enum MeasurementFormat {
     static let denominator = 16
 
     private static let key = "ScreenBean.UseFractions"
+    private static let unitKey = "ScreenBean.MeasurementUnit"
+
+    enum Unit: String {
+        case inches, centimeters
+
+        var unitsPerInch: Double { self == .inches ? 1 : 2.54 }
+        var name: String { rawValue }
+        var suffix: String { self == .inches ? "in" : "cm" }
+    }
+
+    /// The unit measurements are shown in. Values are stored in inches either way.
+    static var unit: Unit {
+        get { UserDefaults.standard.string(forKey: unitKey).flatMap(Unit.init(rawValue:)) ?? .inches }
+        set {
+            guard newValue != unit else { return }
+            UserDefaults.standard.set(newValue.rawValue, forKey: unitKey)
+            NotificationCenter.default.post(name: didChange, object: nil)
+        }
+    }
+
+    static var unitName: String { unit.name }
+    static var unitSuffix: String { unit.suffix }
+    /// Inches in one shown unit: 1 for inches, about 0.394 for centimeters.
+    static var inchesPerUnit: Double { 1 / unit.unitsPerInch }
+
+    /// Fractions only make sense in inches.
+    static var showsFractions: Bool { useFractions && unit == .inches }
 
     static var useFractions: Bool {
         get { UserDefaults.standard.bool(forKey: key) }
@@ -28,7 +57,9 @@ enum MeasurementFormat {
 
     /// The step for steppers and scrubbing: one 16th in fraction mode, otherwise `decimalStep`.
     static func step(decimal decimalStep: Double) -> Double {
-        useFractions ? 1.0 / Double(denominator) : decimalStep
+        if showsFractions { return 1.0 / Double(denominator) }
+        // A tenth of a centimeter, in inches.
+        return unit == .centimeters ? 0.1 / unit.unitsPerInch : decimalStep
     }
 
     /// Rounds to the nearest 16th.
@@ -38,9 +69,16 @@ enum MeasurementFormat {
 
     // MARK: - Formatting
 
+    /// A length given in inches, written in the chosen unit and style, without the unit.
     static func string(_ value: Double) -> String {
-        useFractions ? fractionString(value) : decimalString(value)
+        showsFractions ? fractionString(value) : decimalString(value * unit.unitsPerInch)
     }
+
+    /// "23.5 in" or "59.69 cm".
+    static func withUnit(_ value: Double) -> String { "\(string(value)) \(unitSuffix)" }
+
+    /// "23.5 × 13.2 in" or "59.69 × 33.53 cm".
+    static func pair(_ width: Double, _ height: Double) -> String { "\(string(width)) × \(string(height)) \(unitSuffix)" }
 
     /// Up to four decimal places, at least one: 23.5, 13.4, 0.0625.
     static func decimalString(_ value: Double) -> String {
@@ -65,12 +103,18 @@ enum MeasurementFormat {
 
     // MARK: - Parsing
 
-    /// Reads "23.5", "23 1/8", "23-1/8", "1/8", "-1 1/2", with an optional trailing inch mark or "in".
-    /// Returns nil when the text isn't a measurement.
+    /// Reads "23.5", "23 1/8", "23-1/8", "1/8", "-1 1/2", with an optional unit after it ("in", a quote mark,
+    /// "cm" or "mm"). With no unit, the number is in the chosen unit. Returns inches, or nil when the
+    /// text isn't a measurement.
     static func parse(_ text: String) -> Double? {
         var t = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        for suffix in ["inches", "inch", "in", "\"", "”", "″"] where t.hasSuffix(suffix) {
+        var unitsPerInch = unit.unitsPerInch
+        let suffixes: [(String, Double)] = [("inches", 1), ("inch", 1), ("in", 1), ("\"", 1), ("”", 1), ("″", 1),
+                                            ("centimeters", 2.54), ("centimeter", 2.54), ("cm", 2.54),
+                                            ("millimeters", 25.4), ("millimeter", 25.4), ("mm", 25.4)]
+        for (suffix, perInch) in suffixes where t.hasSuffix(suffix) {
             t = String(t.dropLast(suffix.count)).trimmingCharacters(in: .whitespaces)
+            unitsPerInch = perInch
             break
         }
         var negative = false
@@ -92,7 +136,7 @@ enum MeasurementFormat {
             magnitude = nil
         }
         guard let magnitude else { return nil }
-        return negative ? -magnitude : magnitude
+        return (negative ? -magnitude : magnitude) / unitsPerInch
     }
 
     /// A decimal ("23.5") or a plain fraction ("1/8").

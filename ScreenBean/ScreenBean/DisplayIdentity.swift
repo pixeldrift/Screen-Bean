@@ -38,7 +38,7 @@ struct DisplayIdentity {
     }
 
     var resolutionText: String { "\(pixelWidth) × \(pixelHeight) px" }
-    var sizeText: String { "\(MeasurementFormat.string(widthInches)) × \(MeasurementFormat.string(heightInches)) in" }
+    var sizeText: String { MeasurementFormat.pair(widthInches, heightInches) }
 }
 
 extension NSScreen {

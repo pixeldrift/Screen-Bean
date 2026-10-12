@@ -295,7 +295,7 @@ final class DisplayInspectorView: NSView {
         updateAspectLockButton()
         let showDetected = !d.isVirtual && d.differsFromDetected
         detectedRow.isHidden = !showDetected
-        detectedLabel.stringValue = "Detected \(MeasurementFormat.string(d.detectedWidthInches)) × \(MeasurementFormat.string(d.detectedHeightInches)) in"
+        detectedLabel.stringValue = "Detected " + MeasurementFormat.pair(d.detectedWidthInches, d.detectedHeightInches)
         x.value = Double(px); y.value = Double(py)
         uniform.state = d.uniformBezel ? .on : .off
         bezel.value = d.bezelUniform; slider.doubleValue = d.bezelUniform

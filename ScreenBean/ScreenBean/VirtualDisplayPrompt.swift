@@ -35,7 +35,7 @@ enum VirtualDisplayPrompt {
         }
         let form = NSStackView(views: [
             row("Name", [name]),
-            row("Size (inches)", [width, height]),
+            row("Size (\(MeasurementFormat.unitName))", [width, height]),
             row("Resolution (px)", [pixelWidth, pixelHeight])
         ])
         form.orientation = .vertical; form.alignment = .leading; form.spacing = 8
@@ -43,7 +43,7 @@ enum VirtualDisplayPrompt {
 
         let alert = NSAlert()
         alert.messageText = "Add Virtual Display"
-        alert.informativeText = "A planned display that isn't connected. Width and height are the visible panel in inches."
+        alert.informativeText = "A planned display that isn't connected. Width and height are the visible panel in \(MeasurementFormat.unitName)."
         alert.accessoryView = form
         alert.addButton(withTitle: "Add")
         alert.addButton(withTitle: "Cancel")
@@ -53,7 +53,7 @@ enum VirtualDisplayPrompt {
               let pw = Int(pixelWidth.stringValue.trimmingCharacters(in: .whitespaces)), let ph = Int(pixelHeight.stringValue.trimmingCharacters(in: .whitespaces)), pw > 0, ph > 0 else {
             let warning = NSAlert()
             warning.messageText = "Those sizes can't be used"
-            warning.informativeText = "Enter a width and height in inches, and a resolution in whole pixels."
+            warning.informativeText = "Enter a width and height in \(MeasurementFormat.unitName), and a resolution in whole pixels."
             warning.alertStyle = .warning
             warning.runModal()
             return nil

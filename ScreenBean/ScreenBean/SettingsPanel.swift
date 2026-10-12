@@ -12,6 +12,7 @@ final class SettingsPanel: NSView {
     let identifyButton = NSButton(title: "Identify Displays", target: nil, action: nil)
     let excludePrimaryCheckbox = NSButton(checkboxWithTitle: "Exclude primary", target: nil, action: nil)
 
+    private let unitControl = NSSegmentedControl(labels: ["Inches", "Centimeters"], trackingMode: .selectOne, target: nil, action: nil)
     private let fractionsCheckbox = NSButton(checkboxWithTitle: "Show units as fractions", target: nil, action: nil)
     private let rulersCheckbox = NSButton(checkboxWithTitle: "Show Rulers", target: nil, action: nil)
     private let bezelControl = NSSegmentedControl(labels: ["All", "Per display", "None"], trackingMode: .selectOne, target: nil, action: nil)
@@ -40,7 +41,12 @@ final class SettingsPanel: NSView {
         excludePrimaryCheckbox.toolTip = "Leave the primary display clear while identifying."
         let identify = vertical([identifyButton, excludePrimaryCheckbox], spacing: 6)
 
-        // Measurements.
+        // Measurements: the unit, and (for inches) whether to show fractions.
+        let unitLabel = NSTextField(labelWithString: "Measurement Units")
+        unitLabel.font = .systemFont(ofSize: 12)
+        unitControl.target = self; unitControl.action = #selector(unitChanged)
+        unitControl.toolTip = "Show lengths in inches or centimeters. Layouts are kept in inches either way, and a unit typed after a number (cm, mm, in) is always understood."
+        let units = vertical([unitLabel, unitControl], spacing: 4)
         fractionsCheckbox.target = self; fractionsCheckbox.action = #selector(fractionsToggled)
         let fractionsNote = NSTextField(labelWithString: "Fractions always accepted as input")
         fractionsNote.font = .systemFont(ofSize: 10)
@@ -89,7 +95,7 @@ final class SettingsPanel: NSView {
         NotificationCenter.default.addObserver(forName: GuideSettings.didChange, object: nil, queue: .main) { [weak self] _ in self?.syncGuideControls() }
         syncGuideControls()
 
-        let stack = vertical([title, identify, fractions, rulersCheckbox, bezels, guides], spacing: 12)
+        let stack = vertical([title, identify, units, fractions, rulersCheckbox, bezels, guides], spacing: 12)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -106,7 +112,13 @@ final class SettingsPanel: NSView {
         return stack
     }
 
-    private func syncFractions() { fractionsCheckbox.state = MeasurementFormat.useFractions ? .on : .off }
+    private func syncFractions() {
+        fractionsCheckbox.state = MeasurementFormat.useFractions ? .on : .off
+        unitControl.selectedSegment = MeasurementFormat.unit == .inches ? 0 : 1
+        // Fractions are a way of writing inches.
+        fractionsCheckbox.isEnabled = MeasurementFormat.unit == .inches
+        fractionsCheckbox.toolTip = fractionsCheckbox.isEnabled ? nil : "Fractions apply to inches only."
+    }
 
     private func syncGuideControls() {
         rulersCheckbox.state = GuideSettings.showRulers ? .on : .off
@@ -119,6 +131,7 @@ final class SettingsPanel: NSView {
         snapBezelsCheckbox.state = GuideSettings.snapToBezels ? .on : .off
     }
 
+    @objc private func unitChanged() { MeasurementFormat.unit = unitControl.selectedSegment == 1 ? .centimeters : .inches }
     @objc private func fractionsToggled() { MeasurementFormat.useFractions = fractionsCheckbox.state == .on }
     @objc private func rulersToggled() { GuideSettings.showRulers = rulersCheckbox.state == .on }
     @objc private func bezelChanged() { BezelVisibility.current = bezelChoices[min(max(bezelControl.selectedSegment, 0), bezelChoices.count - 1)] }

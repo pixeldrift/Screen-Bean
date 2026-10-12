@@ -566,6 +566,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         if item.action == #selector(clearGuides) { return !GuideStore.shared.guides.isEmpty }
         if item.action == #selector(toggleFractions) {
+            if MeasurementFormat.unit != .inches { item.state = .off; return false }
             item.state = MeasurementFormat.useFractions ? .on : .off
         }
         return true

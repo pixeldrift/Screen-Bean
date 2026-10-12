@@ -511,9 +511,6 @@ Organized by topic. Checked items are built.
 * [x]	Show detected vs. calibrated size, with a Reset to detected button
 * [x]	Allow entering the diagonal measurement
 * [x]	Add Aspect Ratio, with a lock; recalculate the other sizes when one measurement is edited
-* [ ]	Rotate clockwise and counterclockwise, plus horizontal and vertical flip, in Screen Bean's layout
-
-macOS has no public API for changing a display's rotation, so the rotation and flip items edit Screen Bean's own layout. Detection from System Settings already works.
 
 ### Wallpaper
 
@@ -540,7 +537,7 @@ macOS has no public API for changing a display's rotation, so the rotation and f
 
 * [x]	Type fractional measurements (for example "23 1/8") in number inputs
 * [x]	Toggle number inputs between decimal and fractions (nearest 16th)
-* [ ]	Measurement units: centimeters vs. inches
+* [x]	Measurement units: centimeters vs. inches (stored in inches; a unit typed after a number, like "60 cm", is always understood)
 
 ### Mouse Mapping
 
@@ -563,6 +560,7 @@ macOS has no public API for changing a display's rotation, so the rotation and f
 Rarely needed, so these wait until the main topics are working.
 
 * [ ]	Rotate displays to arbitrary angles (angled installations)
+* [ ]	Rotate (90° steps) and flip displays in Screen Bean's layout. Rotation is already detected from System Settings, so this is only for planning; it needs saved turns applied after detection, and flips honored when slicing the wallpaper
 * [ ]	Media Composer: more than a single reference image or wallpaper, with several items arranged together (photo collages, for example) and other media types, such as video spanned across all screens
 * [ ]	Export installation diagrams, measurement annotations and calibration specs
 * [ ]	Use the GPU for the live preview (including video) so it doesn't lag
