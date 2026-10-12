@@ -463,35 +463,27 @@ The sidebar for editing the selected display: nickname, physical size, position,
 
 ## Development Roadmap
 
-### Phase 1 — Foundation
+Organized by topic. Checked items are built.
+
+### Foundation
 
 * [x]	Detect displays automatically
 * [x]	Read display names
 * [x]	Read pixel dimensions
-* [x]	Read physical dimension's
+* [x]	Read physical dimensions
 * [x]	Calculate PPI
 * [x]	Establish persistent display identity
 * [x]	Establish physical coordinate system
 * [x]	Create persistent display configuration model
-* [x]	Save display configuration
-* [x]	Restore display configuration
-* [x]	Display physical dimensions.
+* [x]	Save and restore display configuration
+* [x]	Display physical dimensions
 * [x]	Automatically scale the layout to the available workspace
 
-### Phase 2 — Interactive Physical Workspace
+### Workspace
 
-* [x]	Pan workspace
-* [x]	Zoom workspace
-* [x]	Scale to Fit
-* [x]	Center View
-* [x]	Physical measurement grid
-* [x]	Select displays
-* [x]	Drag displays
-* [x]	Resize displays from grab handles
-* [x]	Lock displays
-* [x]	Edit physical dimensions
-* [x]	Display color coding
-* [x]	Bezel visibility
+* [x]	Pan, zoom, scale to fit, center view and a physical measurement grid
+* [x]	Select, multi-select, drag, resize from grab handles, and lock displays
+* [x]	Display color coding and bezel visibility
 * [x]	Detect each display's rotation and mirroring from macOS
 * [x]	Refresh displays and open System Settings
 * [x]	Undo and redo for layout edits (Edit menu, Command-Z and Shift-Command-Z)
@@ -500,99 +492,80 @@ The sidebar for editing the selected display: nickname, physical size, position,
 * [x]	Assign a virtual display to a physical display later
 * [x]	Keep when disconnected: a connected display can leave a stand-in in the layout while unplugged, which hands back to the real display when it returns
 * [x]	New connected displays are offered a link to a virtual display, so the plan and the real screen never both show
-* [ ]	Displays sidebar panel listing every display: collapsed by default with an icon to toggle it, List and Thumbnail views, minimal details for each
 * [x]	Layout presets: save the whole setup (display positions, sizes, bezels, colors, locks, guides, images) under a name, such as Work or Home, and switch between them
 * [x]	Presets remember which displays were connected and suggest the matching preset when the connected displays change
 * [x]	Colored border on the real display when its virtual display is selected
 * [x]	Identify displays on the real screens (stays on; optionally excluding the primary)
-* [ ]	Display calibration UI
-* [ ]	Rotate display clockwise (90°) in Screen Bean's layout
-* [ ]	Rotate display counterclockwise (90°) in Screen Bean's layout
-* [ ]	Flip display horizontally (mirror) in Screen Bean's layout
-* [ ]	Flip display vertically (mirror) in Screen Bean's layout
+* [x]	Overlay windows on every display, so tools can draw outside the app window
+* [x]	Rulers (can be hidden) and alignment guides, one tool drawn across all displays
+* [x]	Measurement guides: distance across the gaps between displays, draggable
+* [x]	Custom guides dragged from the rulers
+* [x]	Snap to guides and to bezels while dragging (Control flips snapping)
+* [x]	Modifier keys: Shift constrains or unlinks, Option transforms from the opposite side or zooms from view center, Control flips snapping, Z (held) turns a drag into a zoom, Option-scroll pans up and down and Shift-Option-scroll pans sideways
+* [x]	Shift snaps rotation to 15 degree steps (images; displays follow if arbitrary display rotation is added)
+* [ ]	Displays sidebar panel, collapsible, with List and Thumbnail views (collapsed by default, minimal details for each)
 
-macOS has no public API for changing a display's rotation, so these edit Screen Bean's own layout. Detection from System Settings already works.
+### Display Settings
 
-### Phase 3 — Unified Wallpaper
+* [x]	Edit physical dimensions, position, name, color and bezels
+* [ ]	Show detected vs. calibrated size, with a Reset to detected button
+* [ ]	Allow entering the diagonal measurement
+* [ ]	Add Aspect Ratio, with a lock; recalculate the other sizes when one measurement is edited
+* [ ]	Rotate clockwise and counterclockwise, plus horizontal and vertical flip, in Screen Bean's layout
 
-* [x]	Import wallpaper
-* [x]	Create unified physical canvas
-* [x]	Position and scale wallpaper
-* [x]	Preview wallpaper across displays
-* [x]	Toggle preview clipped to the displays
+macOS has no public API for changing a display's rotation, so the rotation and flip items edit Screen Bean's own layout. Detection from System Settings already works.
+
+### Wallpaper
+
+* [x]	Import wallpaper; create a unified physical canvas
+* [x]	Position, scale, rotate, flip and stretch wallpaper
+* [x]	Fit an image to the selected displays, or to all displays
+* [x]	Preview wallpaper across displays, optionally clipped to the displays (bezels stay on top)
 * [x]	Preview the wallpaper full screen across all real displays
 * [x]	Live preview: wallpaper across the real screens that updates as you edit, with this window on top
-* [x]	Stretch images without keeping proportions (Shift while scaling, or the Height field)
-* [x]	Flip images horizontally and vertically
-* [x]	Fit an image to the selected displays, or to all displays
 * [x]	Lock wallpaper
 * [x]	Account for display rotation
 * [x]	Calculate output resolution
-* [x]	Slice unified image into per-display images
+* [x]	Slice the unified image into per-display images
 * [x]	Export display-specific wallpaper files
 * [x]	Apply wallpaper to each display
 
-### Phase 4 — Visual Calibration
+### Reference Image
 
-* [x]	Import reference image
-* [x]	Position reference image
-* [x]	Scale reference image
-* [x]	Adjust reference transparency
-* [x]	Rotate reference image and wallpaper
+* [x]	Import, position, scale, rotate, flip and stretch a reference image
+* [x]	Adjust opacity and whether it draws above or below the displays
 * [x]	Lock reference image
-* [ ]	Four-corner perspective correction
-* [x]	Overlay windows on every display, so tools can draw outside the app window
-* [x]	Rulers and alignment guides (one tool, drawn across all displays)
-* [x]	Measurement guides (distance across the gaps between displays, draggable)
-* [x]	Custom guides
+
+### Global Options
+
 * [x]	Type fractional measurements (for example "23 1/8") in number inputs
 * [x]	Toggle number inputs between decimal and fractions (nearest 16th)
-* [x]	Show or hide the rulers
-* [ ]	Unit options (inches, centimeters, and others)
+* [ ]	Measurement units: centimeters vs. inches
 
-### Phase 5 — Mouse Mapping
+### Mouse Mapping
 
-* [ ]	Mouse calibration mode
-* [ ]	Edge transport zones
+* [ ]	Display edge transport zones
 * [ ]	Edge-segment mapping
 * [ ]	Corner mapping
-* [ ]	Arbitrary point correspondence
-* [ ]	Coordinate interpolation
-* [ ]	Custom mouse transition paths
-* [ ]	Physical-topology-based transitions
-* [x]	Snap to guides and to bezels while dragging (Option held turns snapping off)
-* [x]	Modifier keys: Shift constrains or unlinks, Option transforms from the opposite side or zooms from view center, Control flips snapping, Z (held) turns a drag into a zoom, Option-scroll pans up and down and Shift-Option-scroll pans sideways
-* [x]	Multiple selection with Shift-click (displays and guides), moving together
-* [x]	Shift snaps rotation to 15 degree steps (images; displays follow if arbitrary display rotation is added)
-* [ ]	Snapping and modifier-key controls
+* [ ]	Point correspondence and interpolation
 
-### Phase 6 — Advanced Calibration
+### Advanced Calibration
 
-* [ ]	Display-generated guide projection
-* [ ]	Cross-display guide alignment
-* [ ]	Multi-point calibration
-* [ ]	Automated geometric transformations
-* [ ]	Physical-scale calibration
-* [ ]	Consistent reference-element sizing
-* [ ]	Advanced perspective correction
-* [ ]	Automated display-corner detection
+* [x]	Guide projection and cross-display alignment
+* [ ]	Corner Pin Alignment mode (warped/un-warped view)
 
-### Phase 7 — Export & Documentation
+### Export & Documentation
 
-* [ ]	PNG layout export
-* [ ]	SVG layout export
-* [ ]	PDF layout export
-* [ ]	Installation diagrams
-* [ ]	Measurement annotations
-* [ ]	Calibration reports
-* [ ]	Reusable layout templates
+* [ ]	Export PNG/SVG template
 
-### Backlog — Low Priority
+### Backlog
 
-Rarely needed, so these wait until the main phases are working.
+Rarely needed, so these wait until the main topics are working.
 
 * [ ]	Rotate displays to arbitrary angles (angled installations)
 * [ ]	Media Composer: more than a single reference image or wallpaper, with several items arranged together (photo collages, for example) and other media types, such as video spanned across all screens
+* [ ]	Export installation diagrams, measurement annotations and calibration specs
+* [ ]	Use the GPU for the live preview (including video) so it doesn't lag
 
 ---
 
