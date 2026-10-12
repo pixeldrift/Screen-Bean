@@ -153,7 +153,7 @@ final class DisplaysPanel: NSView {
 // MARK: - Rows and tiles
 
 /// Shared behavior: clickable, with a highlight while selected.
-private class DisplayItemView: NSView {
+class DisplayItemView: NSView {
     let summary: DisplaySummary
     let isSelected: Bool
     var onClick: ((CGDirectDisplayID, Bool) -> Void)?
@@ -257,5 +257,35 @@ private final class DisplayTile: DisplayItemView {
         let detail = [summary.resolutionText, summary.statusText].compactMap { $0 }.joined(separator: " · ")
         NSAttributedString(string: detail, attributes: attributes(size: 10, color: .secondaryLabelColor, alignment: .center))
             .draw(in: CGRect(x: 4, y: 79, width: bounds.width - 8, height: 14))
+    }
+}
+
+/// A display as a small colored circle with its letter, for the collapsed sidebar. A ring shows it is selected.
+final class DisplayBadge: DisplayItemView {
+    override var intrinsicContentSize: NSSize { NSSize(width: 26, height: 26) }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let circle = bounds.insetBy(dx: 2, dy: 2)
+        NSColor(displayHex: summary.colorHex).setFill()
+        NSBezierPath(ovalIn: circle).fill()
+        if isSelected {
+            let ring = NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1))
+            ring.lineWidth = 2
+            NSColor.controlAccentColor.setStroke()
+            ring.stroke()
+        } else {
+            NSColor.black.withAlphaComponent(0.25).setStroke()
+            let outline = NSBezierPath(ovalIn: circle.insetBy(dx: 0.5, dy: 0.5))
+            outline.stroke()
+        }
+        if summary.isVirtual {
+            let dashed = NSBezierPath(ovalIn: circle.insetBy(dx: 3, dy: 3))
+            dashed.setLineDash([2, 2], count: 2, phase: 0)
+            NSColor.white.withAlphaComponent(0.7).setStroke()
+            dashed.stroke()
+        }
+        let letter = NSAttributedString(string: summary.label, attributes: attributes(size: 11, weight: .bold, color: NSColor.black.withAlphaComponent(0.7), alignment: .center))
+        let size = letter.size()
+        letter.draw(at: CGPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2))
     }
 }

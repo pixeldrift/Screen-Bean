@@ -20,6 +20,8 @@ final class LeftSidebarView: NSView {
 
     private let content = NSView()
     private let expandButton = NSButton()
+    /// Small colored letters for quick selection while the sidebar is collapsed.
+    private let badgeStack = NSStackView()
     private var widthConstraint: NSLayoutConstraint!
 
     private(set) var isCollapsed: Bool {
@@ -65,7 +67,9 @@ final class LeftSidebarView: NSView {
         refreshButton.toolTip = "Read the displays from macOS again, for example after changing them in System Settings"
         addVirtualButton.toolTip = "Add a planned display that isn't connected"
         let buttons = NSStackView(views: [refreshButton, addVirtualButton, settingsButton])
-        buttons.orientation = .vertical; buttons.alignment = .width; buttons.spacing = 8
+        // All the same width, centered in the sidebar.
+        buttons.orientation = .vertical; buttons.alignment = .centerX; buttons.spacing = 8
+        for button in [refreshButton, addVirtualButton, settingsButton] { button.widthAnchor.constraint(equalToConstant: 188).isActive = true }
         buttons.translatesAutoresizingMaskIntoConstraints = false
 
         content.translatesAutoresizingMaskIntoConstraints = false
@@ -80,6 +84,9 @@ final class LeftSidebarView: NSView {
         expandButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(expandButton)
         displaysPanel.onCollapse = { [weak self] in self?.toggleCollapsed() }
+        badgeStack.orientation = .vertical; badgeStack.alignment = .centerX; badgeStack.spacing = 6
+        badgeStack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(badgeStack)
 
         NSLayoutConstraint.activate([
             edge.topAnchor.constraint(equalTo: topAnchor),
@@ -105,12 +112,13 @@ final class LeftSidebarView: NSView {
             scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             scroll.topAnchor.constraint(equalTo: content.topAnchor),
             scroll.bottomAnchor.constraint(equalTo: buttons.topAnchor, constant: -8),
-            buttons.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 14),
-            buttons.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -14),
+            buttons.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             buttons.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12),
 
             expandButton.centerXAnchor.constraint(equalTo: centerXAnchor, constant: -0.5),
-            expandButton.topAnchor.constraint(equalTo: topAnchor, constant: 18)
+            expandButton.topAnchor.constraint(equalTo: topAnchor, constant: 18),
+            badgeStack.centerXAnchor.constraint(equalTo: centerXAnchor, constant: -0.5),
+            badgeStack.topAnchor.constraint(equalTo: expandButton.bottomAnchor, constant: 14)
         ])
         applyCollapsed()
     }
@@ -119,7 +127,25 @@ final class LeftSidebarView: NSView {
         widthConstraint.constant = isCollapsed ? Self.collapsedWidth : Self.expandedWidth
         content.isHidden = isCollapsed
         expandButton.isHidden = !isCollapsed
+        badgeStack.isHidden = !isCollapsed
     }
+
+    /// Shows the displays in the list and, as small badges, on the collapsed strip.
+    func update(_ summaries: [DisplaySummary], selected: Set<CGDirectDisplayID>) {
+        displaysPanel.update(summaries, selected: selected)
+        guard summaries != badgeSummaries || selected != badgeSelection else { return }
+        badgeSummaries = summaries
+        badgeSelection = selected
+        for view in badgeStack.arrangedSubviews { badgeStack.removeArrangedSubview(view); view.removeFromSuperview() }
+        for summary in summaries {
+            let badge = DisplayBadge(summary: summary, isSelected: selected.contains(summary.id))
+            badge.onClick = { [weak self] id, extend in self?.displaysPanel.onSelect?(id, extend) }
+            badgeStack.addArrangedSubview(badge)
+        }
+    }
+
+    private var badgeSummaries: [DisplaySummary] = []
+    private var badgeSelection: Set<CGDirectDisplayID> = []
 
     @objc private func toggleCollapsed() {
         isCollapsed.toggle()

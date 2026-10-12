@@ -32,7 +32,7 @@ final class SettingsPanel: NSView {
 
     private func build() {
         let title = NSTextField(labelWithString: "ScreenBean Settings")
-        title.font = .boldSystemFont(ofSize: 14)
+        title.font = .boldSystemFont(ofSize: 16)
 
         // Identify mode stays on, even while you click around, until the button is switched off.
         identifyButton.setButtonType(.pushOnPushOff)

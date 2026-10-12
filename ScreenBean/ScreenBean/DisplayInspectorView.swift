@@ -57,7 +57,7 @@ final class DisplayInspectorView: NSView {
     private let orientation = NSTextField(labelWithString: "—")
     private let assignMenu = NSPopUpButton(title: "", target: nil, action: nil)
     private let deleteVirtualButton = NSButton(title: "Delete Virtual Display", target: nil, action: nil)
-    private let keepCheckbox = NSButton(checkboxWithTitle: "Keep when disconnected", target: nil, action: nil)
+    private let keepCheckbox = NSButton(checkboxWithTitle: "Make Persistent", target: nil, action: nil)
     private var connectionSection: NSView!
     private let virtualNote = NSTextField(wrappingLabelWithString: "")
     private var virtualSection: NSView!
@@ -87,9 +87,12 @@ final class DisplayInspectorView: NSView {
         header.distribution = .fill
 
         nickname.placeholderString = "Custom monitor name"
+        nickname.alignment = .left
+        nickname.setContentHuggingPriority(.defaultLow, for: .horizontal)
         nickname.target = self; nickname.action = #selector(nameChanged)
         nickname.delegate = ReturnCommitDelegate.shared
         detected.font = .systemFont(ofSize: 11); detected.textColor = .secondaryLabelColor
+        detected.alignment = .left
 
         // Inputs.
         for input in [width, height, x, y, diagonal] { input.step = 0.1 }
@@ -191,7 +194,7 @@ final class DisplayInspectorView: NSView {
         let bezelRow = NSStackView(views: [bezel, NSView()])
         bezelRow.distribution = .fill
         let bezelSection = stack([sectionTitle("Bezel"), toggles, caption, bezelRow, uniformSection, individualSection, colorRow("Color", bezelColor)], spacing: 8)
-        let appearance = section("Appearance", [colorRow("Display Color", displayColor)])
+        let appearance = section("Display Appearance", [colorRow("Color", displayColor)])
 
         // Only a virtual display shows this: it can be handed to a connected display, or deleted.
         assignMenu.pullsDown = true
@@ -200,14 +203,14 @@ final class DisplayInspectorView: NSView {
         deleteVirtualButton.target = self; deleteVirtualButton.action = #selector(deleteVirtualTapped)
         virtualNote.font = .systemFont(ofSize: 11); virtualNote.textColor = .secondaryLabelColor
         keepCheckbox.target = self; keepCheckbox.action = #selector(keepChanged)
-        let keepNote = NSTextField(wrappingLabelWithString: "Leaves a stand-in in the layout when this display is unplugged, and takes over again when it returns.")
+        let keepNote = NSTextField(wrappingLabelWithString: "Keep as a virtual placeholder when the physical display is disconnected. Automatically restores linking when the real display returns.")
         keepNote.font = .systemFont(ofSize: 11); keepNote.textColor = .secondaryLabelColor
-        connectionSection = stack([divider(), section("Connection", [keepCheckbox, keepNote])], spacing: 12)
+        connectionSection = stack([divider(), section("Connection", [NSStackView(views: [keepCheckbox, NSView()]), keepNote])], spacing: 12)
         virtualSection = stack([divider(), section("Virtual Display", [virtualNote, NSStackView(views: [assignMenu, NSView()]), NSStackView(views: [deleteVirtualButton, NSView()])])], spacing: 12)
         virtualSection.isHidden = true
         connectionSection.isHidden = true
 
-        let content = stack([header, stack([nickname, detected], spacing: 4), infoSection, divider(), dimensions, divider(), bezelSection, divider(), appearance, connectionSection, virtualSection], spacing: 12)
+        let content = stack([header, stack([nickname, detected], spacing: 4), infoSection, divider(), dimensions, divider(), appearance, divider(), bezelSection, connectionSection, virtualSection], spacing: 12)
         content.translatesAutoresizingMaskIntoConstraints = false
 
         let document = FlippedView()
@@ -245,7 +248,12 @@ final class DisplayInspectorView: NSView {
         return s
     }
     private func section(_ title: String, _ views: [NSView]) -> NSStackView { stack([sectionTitle(title)] + views, spacing: 8) }
-    private func sectionTitle(_ s: String) -> NSTextField { let f = NSTextField(labelWithString: s); f.font = .boldSystemFont(ofSize: 13); return f }
+    private func sectionTitle(_ s: String) -> NSTextField {
+        let f = NSTextField(labelWithString: s)
+        f.font = .boldSystemFont(ofSize: 13)
+        f.alignment = .left
+        return f
+    }
     private func caption(_ text: String, _ unit: String) -> NSTextField {
         let f = NSTextField(labelWithString: "")
         let a = NSMutableAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 11)])
@@ -266,12 +274,16 @@ final class DisplayInspectorView: NSView {
     }
     private func valueCell(_ label: String, _ value: NSTextField) -> NSView {
         let l = NSTextField(labelWithString: label); l.font = .systemFont(ofSize: 11)
+        l.alignment = .left; value.alignment = .left
         value.font = .systemFont(ofSize: 12); value.textColor = .secondaryLabelColor
         return stack([l, value], spacing: 2)
     }
     private func colorRow(_ label: String, _ button: ColorSwatchButton) -> NSView {
-        let row = NSStackView(views: [NSTextField(labelWithString: label), button])
+        // The label and swatch sit together on the left.
+        let row = NSStackView(views: [NSTextField(labelWithString: label), button, NSView()])
         row.spacing = 8
+        row.alignment = .centerY
+        row.distribution = .fill
         return row
     }
 

@@ -224,7 +224,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         leftSidebar = left
         left.translatesAutoresizingMaskIntoConstraints = false
         left.displaysPanel.onSelect = { [weak mainView] id, extend in mainView?.selectDisplay(id, extending: extend) }
-        left.displaysPanel.update(mainView.displaySummaries(), selected: mainView.selectedDisplayIDs)
+        left.update(mainView.displaySummaries(), selected: mainView.selectedDisplayIDs)
         left.refreshButton.target = self; left.refreshButton.action = #selector(refreshDisplays)
         left.addVirtualButton.target = self; left.addVirtualButton.action = #selector(addVirtualDisplay)
         left.settingsButton.target = self; left.settingsButton.action = #selector(openDisplaySettings)
@@ -463,7 +463,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Pushes the current displays and selection to the overlays on the real screens.
     private func refreshOverlays() {
         guard let mainView else { return }
-        leftSidebar?.displaysPanel.update(mainView.displaySummaries(), selected: mainView.selectedDisplayIDs)
+        leftSidebar?.update(mainView.displaySummaries(), selected: mainView.selectedDisplayIDs)
         overlays.update(
             displays: mainView.displays,
             selectedIDs: mainView.selectedDisplayIDs,
