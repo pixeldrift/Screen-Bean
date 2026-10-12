@@ -18,6 +18,11 @@ final class LeftSidebarView: NSView {
     let addVirtualButton = NSButton(title: "Add Virtual Display…", target: nil, action: nil)
     let settingsButton = NSButton(title: "System Settings…", target: nil, action: nil)
 
+    private static let expandedButtonWidth: CGFloat = 188
+    private static let collapsedButtonWidth: CGFloat = 30
+    private var buttonWidths: [NSLayoutConstraint] = []
+    private var buttonTitles: [String] = []
+
     private let content = NSView()
     private let expandButton = NSButton()
     /// Small colored letters for quick selection while the sidebar is collapsed.
@@ -69,12 +74,19 @@ final class LeftSidebarView: NSView {
         let buttons = NSStackView(views: [refreshButton, addVirtualButton, settingsButton])
         // All the same width, centered in the sidebar.
         buttons.orientation = .vertical; buttons.alignment = .centerX; buttons.spacing = 8
-        for button in [refreshButton, addVirtualButton, settingsButton] { button.widthAnchor.constraint(equalToConstant: 188).isActive = true }
+        for button in [refreshButton, addVirtualButton, settingsButton] {
+            let width = button.widthAnchor.constraint(equalToConstant: Self.expandedButtonWidth)
+            width.isActive = true
+            buttonWidths.append(width)
+            buttonTitles.append(button.title)
+        }
         buttons.translatesAutoresizingMaskIntoConstraints = false
 
         content.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(scroll); content.addSubview(buttons)
+        content.addSubview(scroll)
         addSubview(content)
+        // The buttons stay visible when collapsed, as icons only.
+        addSubview(buttons)
 
         expandButton.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: "Show displays")
         expandButton.isBordered = false
@@ -112,8 +124,8 @@ final class LeftSidebarView: NSView {
             scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             scroll.topAnchor.constraint(equalTo: content.topAnchor),
             scroll.bottomAnchor.constraint(equalTo: buttons.topAnchor, constant: -8),
-            buttons.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-            buttons.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12),
+            buttons.centerXAnchor.constraint(equalTo: centerXAnchor, constant: -0.5),
+            buttons.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
 
             expandButton.centerXAnchor.constraint(equalTo: centerXAnchor, constant: -0.5),
             expandButton.topAnchor.constraint(equalTo: topAnchor, constant: 18),
@@ -128,6 +140,13 @@ final class LeftSidebarView: NSView {
         content.isHidden = isCollapsed
         expandButton.isHidden = !isCollapsed
         badgeStack.isHidden = !isCollapsed
+        // Collapsed, each button shows only its icon.
+        let buttons = [refreshButton, addVirtualButton, settingsButton]
+        for (index, button) in buttons.enumerated() {
+            button.title = isCollapsed ? "" : buttonTitles[index]
+            button.imagePosition = isCollapsed ? .imageOnly : .imageLeading
+            buttonWidths[index].constant = isCollapsed ? Self.collapsedButtonWidth : Self.expandedButtonWidth
+        }
     }
 
     /// Shows the displays in the list and, as small badges, on the collapsed strip.
