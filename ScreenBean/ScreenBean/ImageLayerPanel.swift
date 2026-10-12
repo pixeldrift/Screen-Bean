@@ -19,6 +19,8 @@ final class ImageLayerPanel: NSView {
     var onLockChanged: ((Bool) -> Void)?
     /// Called when the user asks to fit the image to the screens.
     var onFitRequested: (() -> Void)?
+    /// Called when the user asks to align the image to a display (reference image only).
+    var onAlignRequested: (() -> Void)?
     /// Called when the clip-to-displays checkbox changes (wallpaper only).
     var onClipChanged: ((Bool) -> Void)?
     /// Called when the user edits the position or scale fields.
@@ -45,6 +47,8 @@ final class ImageLayerPanel: NSView {
     private let titleText: String
     private let showsTransform: Bool
     private let showsClipToggle: Bool
+    private let showsAlign: Bool
+    private var alignButton: NSButton?
     private var frameValue: ImageFrame?
 
     /// Height / width of the current image; 1 when there is none.
@@ -53,10 +57,11 @@ final class ImageLayerPanel: NSView {
         return Double(size.height / size.width)
     }
 
-    init(title: String, showsTransform: Bool = false, showsClipToggle: Bool = false) {
+    init(title: String, showsTransform: Bool = false, showsClipToggle: Bool = false, showsAlign: Bool = false) {
         titleText = title
         self.showsTransform = showsTransform
         self.showsClipToggle = showsClipToggle
+        self.showsAlign = showsAlign
         super.init(frame: .zero)
         build()
     }
@@ -80,6 +85,7 @@ final class ImageLayerPanel: NSView {
         lockButton.contentTintColor = locked ? .labelColor : .secondaryLabelColor
         lockButton.toolTip = locked ? "Locked – click to allow moving and scaling" : "Lock this image's position and scale"
         for input in [x, y, width, height, rotation] { input.isEnabled = !locked }
+        alignButton?.isEnabled = !locked
     }
 
     /// Shows the saved clip setting without notifying `onClipChanged`.
@@ -214,13 +220,18 @@ final class ImageLayerPanel: NSView {
         rotationRow.spacing = 8
         rotationRow.alignment = .bottom
         rotationRow.distribution = .fill
-        let section = NSStackView(views: [
-            rotationRow,
-            buttonRow([("Fit to Screens", { [weak self] in self?.onFitRequested?() }),
-                       ("Reset Proportions", { [weak self] in self?.edit { $0.stretch = 1 } })]),
-            columns(width.labeled("Width", unit: "inches"), height.labeled("Height", unit: "inches")),
-            columns(x.labeled("X-Pos", unit: "inches"), y.labeled("Y-Pos", unit: "inches"))
-        ])
+        // Only the reference image can be matched to a display.
+        var alignViews: [NSView] = []
+        if showsAlign {
+            let row = buttonRow([("Align to Display…", { [weak self] in self?.onAlignRequested?() })])
+            alignButton = (row as? NSStackView)?.arrangedSubviews.first as? NSButton
+            alignViews = [row]
+        }
+        let fitRow = buttonRow([("Fit to Screens", { [weak self] in self?.onFitRequested?() }),
+                                ("Reset Proportions", { [weak self] in self?.edit { $0.stretch = 1 } })])
+        let sizeRow = columns(width.labeled("Width", unit: "inches"), height.labeled("Height", unit: "inches"))
+        let positionRow = columns(x.labeled("X-Pos", unit: "inches"), y.labeled("Y-Pos", unit: "inches"))
+        let section = NSStackView(views: [rotationRow, fitRow] + alignViews + [sizeRow, positionRow])
         section.orientation = .vertical; section.alignment = .width; section.spacing = 8
         return section
     }

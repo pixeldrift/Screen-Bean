@@ -14,6 +14,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let overlays = DisplayOverlayManager()
     private var sidebarView: SidebarView!
     private var leftSidebar: LeftSidebarView!
+    private var alignEditor: AlignToDisplayController?
     private var identifyButton: NSButton { sidebarView.settingsPanel.identifyButton }
     private var previewButton: NSButton { sidebarView.previewWallpaperButton }
     private var liveCheckbox: NSButton { sidebarView.liveCheckbox }
@@ -150,6 +151,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 }
             }
             panel.onFitRequested = { [weak mainView] in mainView?.fitImageToScreens(slot) }
+            if slot == .referenceImage { panel.onAlignRequested = { [weak self] in self?.presentAlignEditor() } }
             panel.onFrameChanged = { frame in
                 UndoCenter.shared.perform("Edit Image", coalesceKey: "image-\(slot.rawValue)") {
                     setLayer(slot) { $0.frame = frame }
@@ -408,6 +410,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         alert.beginSheetModal(for: window) { response in
             if response == .alertFirstButtonReturn { self.applyPreset(match) }
         }
+    }
+
+    // MARK: - Align Reference Image
+
+    /// Opens the editor that scales and places the reference image from marks made on the photo.
+    private func presentAlignEditor() {
+        guard let mainView, let image = mainView.referenceLayer.image, let frame = mainView.referenceLayer.frame else { return }
+        let targets = mainView.alignmentTargets()
+        guard !targets.isEmpty else {
+            showAlert("No displays to match", "Add or connect a display first.")
+            return
+        }
+        alignEditor?.window.close()
+        let editor = AlignToDisplayController(image: image, targets: targets, preselect: mainView.selectedDisplayIDs.first, current: frame)
+        editor.onMatch = { [weak mainView] frame in mainView?.applyAlignedFrame(frame, to: .referenceImage) }
+        editor.onClose = { [weak self] in self?.alignEditor = nil }
+        alignEditor = editor
+        editor.show()
     }
 
     // MARK: - Virtual Displays

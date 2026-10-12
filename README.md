@@ -532,6 +532,7 @@ Organized by topic. Checked items are built.
 * [x]	Import, position, scale, rotate, flip and stretch a reference image
 * [x]	Adjust opacity and whether it draws above or below the displays
 * [x]	Lock reference image
+* [x]	Align to Display: mark a display's four corners in the photo, or draw a line and enter its real length, to scale and place the reference image to match (best fit; photos are never perfect)
 
 ### Global Options
 
@@ -549,7 +550,6 @@ Organized by topic. Checked items are built.
 ### Advanced Calibration
 
 * [x]	Guide projection and cross-display alignment
-* [ ]	Corner Pin Alignment mode (warped/un-warped view)
 
 ### Export & Documentation
 
@@ -560,6 +560,7 @@ Organized by topic. Checked items are built.
 Rarely needed, so these wait until the main topics are working.
 
 * [ ]	Rotate displays to arbitrary angles (angled installations)
+* [ ]	Corner Pin Alignment mode (warped/un-warped view), a four-corner perspective correction for the reference image
 * [ ]	Rotate (90° steps) and flip displays in Screen Bean's layout. Rotation is already detected from System Settings, so this is only for planning; it needs saved turns applied after detection, and flips honored when slicing the wallpaper
 * [ ]	Media Composer: more than a single reference image or wallpaper, with several items arranged together (photo collages, for example) and other media types, such as video spanned across all screens
 * [ ]	Export installation diagrams, measurement annotations and calibration specs

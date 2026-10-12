@@ -1861,6 +1861,26 @@ class DisplayArrangementView: NSView {
         needsDisplay = true
     }
 
+    // MARK: - Align to Display
+    /// The displays a photo can be matched to, with each screen's place in the workspace.
+    func alignmentTargets() -> [AlignTarget] {
+        physicalLayout.displays.enumerated().map { index, placed in
+            AlignTarget(
+                id: placed.id, label: DisplayIdentity.label(forIndex: index),
+                name: displays.first(where: { $0.displayID == placed.id })?.nickname ?? placed.nickname,
+                rect: panelRect(placed)
+            )
+        }
+    }
+
+    /// Gives an image the frame worked out by the alignment editor, as one undo step.
+    func applyAlignedFrame(_ frame: ImageFrame, to slot: ImageLayerSlot) {
+        UndoCenter.shared.perform("Align Image") {
+            setFrame(frame, for: slot)
+            onImageFrameChanged?(slot, frame)
+        }
+    }
+
     // MARK: - Fit to Screens
     /// Scales and centers an image to cover the selected displays, or all displays when none is selected.
     /// Proportions are restored and the turn is cleared; flips are kept.
