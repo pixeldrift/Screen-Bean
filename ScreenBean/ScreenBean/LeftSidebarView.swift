@@ -16,7 +16,7 @@ final class LeftSidebarView: NSView {
     let displaysPanel = DisplaysPanel()
     let refreshButton = NSButton(title: "Refresh Displays", target: nil, action: nil)
     let addVirtualButton = NSButton(title: "Add Virtual Display…", target: nil, action: nil)
-    let settingsButton = NSButton(title: "Display Settings…", target: nil, action: nil)
+    let settingsButton = NSButton(title: "System Settings…", target: nil, action: nil)
 
     private let content = NSView()
     private let expandButton = NSButton()
