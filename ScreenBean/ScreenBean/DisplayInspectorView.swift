@@ -281,7 +281,9 @@ final class DisplayInspectorView: NSView {
         bezelColor.isEnabled = editable; displayColor.isEnabled = editable
         // Settings can force every bezel on or off, which takes this display's own switch out of play.
         let overridden = BezelVisibility.current != .perDisplay
-        showBezel.isEnabled = editable && !overridden
+        // Stays clickable while a global setting overrides it; it just looks dimmed.
+        showBezel.isEnabled = editable
+        showBezel.alphaValue = overridden ? 0.45 : 1
         showBezel.toolTip = overridden ? "All bezels are currently forced \(BezelVisibility.current == .showAll ? "on" : "off") in Settings." : nil
         lockButton.isEnabled = hasDisplay
         deleteVirtualButton.isEnabled = editable

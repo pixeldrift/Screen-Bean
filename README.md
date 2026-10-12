@@ -547,6 +547,7 @@ macOS has no public API for changing a display's rotation, so these edit Screen 
 * [x]	Custom guides
 * [x]	Type fractional measurements (for example "23 1/8") in number inputs
 * [x]	Toggle number inputs between decimal and fractions (nearest 16th)
+* [x]	Show or hide the rulers
 * [ ]	Unit options (inches, centimeters, and others)
 
 ### Phase 5 — Mouse Mapping
@@ -560,7 +561,7 @@ macOS has no public API for changing a display's rotation, so these edit Screen 
 * [ ]	Custom mouse transition paths
 * [ ]	Physical-topology-based transitions
 * [x]	Snap to guides and to bezels while dragging (Option held turns snapping off)
-* [x]	Modifier keys: Shift constrains or unlinks, Option transforms from the opposite side or zooms from view center, Control flips snapping
+* [x]	Modifier keys: Shift constrains or unlinks, Option transforms from the opposite side or zooms from view center, Control flips snapping, Z (held) turns a drag into a zoom, Option-scroll pans up and down and Shift-Option-scroll pans sideways
 * [x]	Multiple selection with Shift-click (displays and guides), moving together
 * [x]	Shift snaps rotation to 15 degree steps (images; displays follow if arbitrary display rotation is added)
 * [ ]	Snapping and modifier-key controls

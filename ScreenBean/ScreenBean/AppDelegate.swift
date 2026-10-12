@@ -81,7 +81,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let viewMenuItem = NSMenuItem()
         mainMenu.addItem(viewMenuItem)
         let viewMenu = NSMenu(title: "View")
-        let fractionsItem = NSMenuItem(title: "Show Measurements as Fractions", action: #selector(toggleFractions), keyEquivalent: "")
+        let fractionsItem = NSMenuItem(title: "Show Units as Fractions", action: #selector(toggleFractions), keyEquivalent: "")
         fractionsItem.target = self
         viewMenu.addItem(fractionsItem)
         let guidesItem = NSMenuItem(title: "Show Guides", action: #selector(toggleGuides), keyEquivalent: ";")
@@ -233,7 +233,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         container.addSubview(buttonStack)
         container.addSubview(systemButtonStack)
 
+        // The rulers run down the left edge, so the buttons sit clear of them.
+        let buttonLeading = buttonStack.leadingAnchor.constraint(equalTo: container.leadingAnchor)
+        func positionButtons() { buttonLeading.constant = GuideSettings.showRulers ? 32 : 12 }
+        positionButtons()
+        NotificationCenter.default.addObserver(forName: GuideSettings.didChange, object: nil, queue: .main) { _ in positionButtons() }
         NSLayoutConstraint.activate([
+            buttonLeading,
             mainView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             mainView.trailingAnchor.constraint(equalTo: sidebar.leadingAnchor),
             mainView.topAnchor.constraint(equalTo: container.topAnchor),
@@ -242,7 +248,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             sidebar.topAnchor.constraint(equalTo: container.topAnchor),
             sidebar.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             sidebar.widthAnchor.constraint(equalToConstant: SidebarMetrics.width),
-            buttonStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
             buttonStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
             systemButtonStack.trailingAnchor.constraint(equalTo: mainView.trailingAnchor, constant: -12),
             systemButtonStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12)

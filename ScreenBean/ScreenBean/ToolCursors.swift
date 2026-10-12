@@ -64,4 +64,36 @@ enum ToolCursors {
         }
         return NSCursor(image: image, hotSpot: NSPoint(x: size.width / 2, y: size.height / 2))
     }()
+
+    /// A magnifier with a plus (zooming in) or a minus (zooming out), outlined in white like the other cursors.
+    private static func magnifier(minus: Bool) -> NSCursor {
+        let size = NSSize(width: 28, height: 28)
+        let image = NSImage(size: size, flipped: false) { _ in
+            let lens = CGPoint(x: 11, y: 17)
+            let radius: CGFloat = 7
+            let path = NSBezierPath()
+            path.lineCapStyle = .round
+            path.appendOval(in: CGRect(x: lens.x - radius, y: lens.y - radius, width: radius * 2, height: radius * 2))
+            // The handle runs from the lens toward the lower right.
+            let start = CGPoint(x: lens.x + radius * 0.71, y: lens.y - radius * 0.71)
+            path.move(to: start); path.line(to: CGPoint(x: start.x + 8, y: start.y - 8))
+            // The sign inside the lens.
+            let sign = NSBezierPath()
+            sign.lineCapStyle = .round
+            sign.move(to: CGPoint(x: lens.x - 3.5, y: lens.y)); sign.line(to: CGPoint(x: lens.x + 3.5, y: lens.y))
+            if !minus { sign.move(to: CGPoint(x: lens.x, y: lens.y - 3.5)); sign.line(to: CGPoint(x: lens.x, y: lens.y + 3.5)) }
+            NSColor.white.setStroke()
+            path.lineWidth = 5; path.stroke()
+            sign.lineWidth = 4.5; sign.stroke()
+            NSColor.black.setStroke()
+            path.lineWidth = 2; path.stroke()
+            sign.lineWidth = 2; sign.stroke()
+            return true
+        }
+        // The hot spot is the middle of the lens (measured from the top left).
+        return NSCursor(image: image, hotSpot: NSPoint(x: 11, y: 11))
+    }
+
+    static let zoomIn = magnifier(minus: false)
+    static let zoomOut = magnifier(minus: true)
 }

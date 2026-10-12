@@ -27,7 +27,12 @@ final class ImageLayerPanel: NSView {
     private let dropZone = ImageDropView()
     private let chooseButton = DropButton(title: "Choose Image…", target: nil, action: nil)
     private let clearButton = NSButton(title: "Clear", target: nil, action: nil)
-    private let slider = NSSlider(value: 0, minValue: -1, maxValue: 1, target: nil, action: nil)
+    private let slider: NSSlider = {
+        let slider = NSSlider()
+        slider.cell = SmallKnobSliderCell()
+        slider.minValue = -1; slider.maxValue = 1; slider.doubleValue = 0
+        return slider
+    }()
     private let readout = NSTextField(labelWithString: "")
     private let x = NumberInput(), y = NumberInput(), width = NumberInput(), height = NumberInput(), rotation = NumberInput()
     private var transformSection: NSView?
@@ -123,19 +128,24 @@ final class ImageLayerPanel: NSView {
             tick.centerYAnchor.constraint(equalTo: slider.centerYAnchor),
             tick.widthAnchor.constraint(equalToConstant: 1),
             tick.heightAnchor.constraint(equalToConstant: 16),
-            sliderHolder.heightAnchor.constraint(equalToConstant: 24)
+            sliderHolder.heightAnchor.constraint(equalToConstant: 18)
         ])
 
         let below = NSTextField(labelWithString: "Below")
         let above = NSTextField(labelWithString: "Above")
-        let spacer = NSView()
         for l in [below, above] { l.font = .systemFont(ofSize: 11); l.textColor = .secondaryLabelColor }
-        let ends = NSStackView(views: [below, spacer, above])
-        ends.distribution = .fill
         readout.font = .systemFont(ofSize: 11); readout.textColor = .secondaryLabelColor
+        readout.alignment = .center
+        // The percentage sits centered between the two end labels.
+        let ends = NSStackView(views: [below, readout, above])
+        ends.distribution = .equalCentering
+        // Keep the labels close under the bar.
+        let blend = NSStackView(views: [sliderHolder, ends])
+        blend.orientation = .vertical; blend.alignment = .leading; blend.spacing = 0
+        for v in [sliderHolder, ends] { v.widthAnchor.constraint(equalTo: blend.widthAnchor).isActive = true }
 
-        let heading = NSTextField(labelWithString: "OPACITY & LAYER")
-        heading.font = .boldSystemFont(ofSize: 10); heading.textColor = .secondaryLabelColor
+        let heading = NSTextField(labelWithString: "Opacity & Layering")
+        heading.font = .boldSystemFont(ofSize: 11); heading.textColor = .secondaryLabelColor
 
         lockButton.isBordered = false
         lockButton.imageScaling = .scaleProportionallyUpOrDown
@@ -147,8 +157,8 @@ final class ImageLayerPanel: NSView {
         header.distribution = .fill
 
         // Image first, then how it blends, then (for images) where it sits and how big it is.
-        var views: [NSView] = [header, dropZone, buttons, heading, sliderHolder, ends, readout]
-        imageOnlyViews = [heading, sliderHolder, ends, readout, lockButton]
+        var views: [NSView] = [header, dropZone, buttons, heading, blend]
+        imageOnlyViews = [heading, blend, lockButton]
         if showsClipToggle {
             clipCheckbox.target = self; clipCheckbox.action = #selector(clipToggled)
             views.append(clipCheckbox)
@@ -164,7 +174,7 @@ final class ImageLayerPanel: NSView {
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
-        var fullWidth: [NSView] = [header, dropZone, sliderHolder, ends]
+        var fullWidth: [NSView] = [header, dropZone, blend]
         if let transformSection { fullWidth.append(transformSection) }
         for v in fullWidth { v.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
         NSLayoutConstraint.activate([
@@ -195,17 +205,45 @@ final class ImageLayerPanel: NSView {
             let aspect = self.aspect
             self.edit { $0.stretch = v / max($0.width * aspect, 0.0001) }
         }
+        // Rotation and flips first, then fit and reset, then size and position (as in the display inspector).
+        let rotationBox = rotation.labeled("Rotation", unit: "°")
+        rotationBox.widthAnchor.constraint(equalToConstant: 76).isActive = true
+        let flipH = iconButton("arrow.left.and.right.righttriangle.left.righttriangle.right", tip: "Flip Horizontal") { [weak self] in self?.edit { $0.flipHorizontal.toggle() } }
+        let flipV = iconButton("arrow.up.and.down.righttriangle.up.righttriangle.down", tip: "Flip Vertical") { [weak self] in self?.edit { $0.flipVertical.toggle() } }
+        let rotationRow = NSStackView(views: [rotationBox, flipH, flipV])
+        rotationRow.spacing = 8
+        rotationRow.alignment = .bottom
+        rotationRow.distribution = .fill
         let section = NSStackView(views: [
-            twoColumnGrid(x.labeled("X-Pos", unit: "inches"), y.labeled("Y-Pos", unit: "inches")),
-            twoColumnGrid(width.labeled("Width", unit: "inches"), height.labeled("Height", unit: "inches")),
-            twoColumnGrid(rotation.labeled("Rotation", unit: "degrees"), NSView()),
-            buttonRow([("Flip Horizontal", { [weak self] in self?.edit { $0.flipHorizontal.toggle() } }),
-                       ("Flip Vertical", { [weak self] in self?.edit { $0.flipVertical.toggle() } })]),
+            rotationRow,
             buttonRow([("Fit to Screens", { [weak self] in self?.onFitRequested?() }),
-                       ("Reset Proportions", { [weak self] in self?.edit { $0.stretch = 1 } })])
+                       ("Reset Proportions", { [weak self] in self?.edit { $0.stretch = 1 } })]),
+            columns(width.labeled("Width", unit: "inches"), height.labeled("Height", unit: "inches")),
+            columns(x.labeled("X-Pos", unit: "inches"), y.labeled("Y-Pos", unit: "inches"))
         ])
         section.orientation = .vertical; section.alignment = .width; section.spacing = 8
         return section
+    }
+
+    /// Two inputs side by side, each one column wide and floated left, like the display inspector.
+    private func columns(_ a: NSView, _ b: NSView) -> NSStackView {
+        for v in [a, b] { v.widthAnchor.constraint(equalToConstant: SidebarMetrics.columnWidth).isActive = true }
+        let row = NSStackView(views: [a, b])
+        row.spacing = SidebarMetrics.columnSpacing
+        row.alignment = .top
+        row.distribution = .fill
+        return row
+    }
+
+    /// A small button showing only a symbol.
+    private func iconButton(_ symbol: String, tip: String, action: @escaping () -> Void) -> NSButton {
+        let button = ClosureButton(title: "", action: action)
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: tip)
+        button.imagePosition = .imageOnly
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.toolTip = tip
+        return button
     }
 
     /// Small buttons that run closures, side by side.
@@ -286,7 +324,7 @@ final class ImageLayerPanel: NSView {
         let blend = ImageLayerBlend(value: slider.doubleValue)
         if dropZone.image == nil { readout.stringValue = "" }
         else if blend.opacity == 0 { readout.stringValue = "Hidden" }
-        else { readout.stringValue = "\(Int((blend.opacity * 100).rounded()))% opacity, \(blend.aboveDisplays ? "above" : "below") displays" }
+        else { readout.stringValue = "\(Int((blend.opacity * 100).rounded()))%, \(blend.aboveDisplays ? "above" : "below")" }
     }
 }
 
@@ -318,4 +356,30 @@ final class ClosureButton: NSButton {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     @objc private func run() { handler() }
+}
+
+/// A slider whose round knob is about a quarter smaller than the system's.
+final class SmallKnobSliderCell: NSSliderCell {
+    private let knobDiameter: CGFloat = 16
+
+    override func knobRect(flipped: Bool) -> NSRect {
+        let full = super.knobRect(flipped: flipped)
+        return NSRect(x: full.midX - knobDiameter / 2, y: full.midY - knobDiameter / 2, width: knobDiameter, height: knobDiameter)
+    }
+
+    override func drawKnob(_ knobRect: NSRect) {
+        let circle = NSBezierPath(ovalIn: knobRect.insetBy(dx: 0.5, dy: 0.5))
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
+        shadow.shadowBlurRadius = 2
+        shadow.shadowOffset = NSSize(width: 0, height: -1)
+        shadow.set()
+        (isEnabled ? NSColor.white : NSColor.white.withAlphaComponent(0.6)).setFill()
+        circle.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        NSColor.black.withAlphaComponent(0.25).setStroke()
+        circle.lineWidth = 0.5
+        circle.stroke()
+    }
 }

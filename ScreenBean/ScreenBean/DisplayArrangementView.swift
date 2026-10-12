@@ -740,9 +740,8 @@ class DisplayArrangementView: NSView {
         outline.stroke()
     }
 
-    /// Locked displays always show the lock; unlocked ones show it while selected.
+    /// Every display shows its lock, open or closed.
     private func drawLockIcon(for display: PhysicalLayout.Display, in rect: CGRect, isSelected: Bool) {
-        guard display.isLocked || isSelected else { return }
         drawLockSymbol(locked: display.isLocked, in: lockIconRect(in: rect))
     }
 
@@ -1038,6 +1037,7 @@ class DisplayArrangementView: NSView {
 
     /// The cursor for whatever is under `point`: an arrow pointing the way a drag from there would go.
     private func cursor(at point: CGPoint) -> NSCursor {
+        if isZoomKeyDown { return ToolCursors.zoomIn }
         if let axis = rulerAxis(at: point) { return guideCursor(axis) }
         if let guide = customGuide(at: point) { return guideCursor(guide.axis) }
         if let gap = gapMeasurement(at: point) { return gapCursor(gap.measurement, zone: gap.zone) }
@@ -1073,6 +1073,14 @@ class DisplayArrangementView: NSView {
 
     /// Delete or Backspace removes the custom guide under the mouse.
     override func keyDown(with event: NSEvent) {
+        // Holding Z (with no other modifier) is zoom mode.
+        if event.keyCode == 6, event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty {
+            if !isZoomKeyDown {
+                isZoomKeyDown = true
+                if let window { cursor(at: convert(window.mouseLocationOutsideOfEventStream, from: nil)).set() }
+            }
+            return
+        }
         if event.keyCode == 51 || event.keyCode == 117, !selectedGuideIDs.isEmpty || hoverGuideID != nil {
             // Delete removes the selected guides, or the one under the mouse if none are selected.
             let doomed = selectedGuideIDs.isEmpty ? [hoverGuideID].compactMap { $0 } : Array(selectedGuideIDs)
@@ -1084,6 +1092,20 @@ class DisplayArrangementView: NSView {
         } else {
             super.keyDown(with: event)
         }
+    }
+
+    override func keyUp(with event: NSEvent) {
+        if event.keyCode == 6, isZoomKeyDown {
+            isZoomKeyDown = false
+            if let window { cursor(at: convert(window.mouseLocationOutsideOfEventStream, from: nil)).set() }
+        } else {
+            super.keyUp(with: event)
+        }
+    }
+
+    override func resignFirstResponder() -> Bool {
+        isZoomKeyDown = false
+        return super.resignFirstResponder()
     }
 
     private final class GuideMenuPayload: NSObject {
@@ -1175,11 +1197,13 @@ class DisplayArrangementView: NSView {
     }
 
     private func isOverRuler(_ point: CGPoint) -> Bool {
-        point.x <= rulerSize || point.y >= bounds.maxY - rulerSize
+        guard GuideSettings.showRulers else { return false }
+        return point.x <= rulerSize || point.y >= bounds.maxY - rulerSize
     }
 
     /// Which kind of guide a mouse-down at `point` would pull out of a ruler.
     private func rulerAxis(at point: CGPoint) -> GuideAxis? {
+        guard GuideSettings.showRulers else { return nil }
         if point.y >= bounds.maxY - rulerSize && point.x > rulerSize { return .horizontal }
         if point.x <= rulerSize && point.y < bounds.maxY - rulerSize { return .vertical }
         return nil
@@ -1237,7 +1261,8 @@ class DisplayArrangementView: NSView {
     }
 
     // MARK: - Rulers
-    private let rulerSize: CGFloat = 20
+    /// Width of the ruler strips; zero while rulers are hidden.
+    private var rulerSize: CGFloat { GuideSettings.showRulers ? 20 : 0 }
 
     /// Spacing between labeled ruler ticks, in inches, chosen for the current zoom.
     private func rulerMajorSpacing() -> Double {
@@ -1250,6 +1275,7 @@ class DisplayArrangementView: NSView {
     }
 
     private func drawRulers() {
+        guard GuideSettings.showRulers else { return }
         let topStrip = CGRect(x: 0, y: bounds.maxY - rulerSize, width: bounds.width, height: rulerSize)
         let leftStrip = CGRect(x: 0, y: 0, width: rulerSize, height: bounds.height - rulerSize)
         NSColor.windowBackgroundColor.withAlphaComponent(0.94).setFill()
@@ -1479,63 +1505,53 @@ class DisplayArrangementView: NSView {
             if let drag = gapDrag { activeZone = drag.measurement.key == m.key ? drag.zone : nil }
             else if m.key == hoverGapKey { activeZone = hoverGapZone }
             let gray = NSColor.systemGray
-            func color(for zone: GapZone) -> NSColor {
-                guard activeZone == zone else { return gray }
+            // The whole measurement takes the color of the part being pointed at.
+            var stroke = gray
+            if let zone = activeZone {
                 switch zone {
-                case .first: return displayColor(m.first)
-                case .second: return displayColor(m.second)
-                case .middle: return NSColor.controlAccentColor
+                case .first: stroke = displayColor(m.first)
+                case .second: stroke = displayColor(m.second)
+                case .middle: stroke = NSColor.controlAccentColor
                 }
             }
             let capLength: CGFloat = 16
             let arrow: CGFloat = 6
-            func lerp(_ t: CGFloat) -> CGPoint { CGPoint(x: p0.x + (p1.x - p0.x) * t, y: p0.y + (p1.y - p0.y) * t) }
-            let quarter0 = lerp(0.25), quarter1 = lerp(0.75)
 
-            // One path per zone so each can be colored on its own: end bar and arrowhead, then shaft.
-            func endPath(at end: CGPoint, toward inner: CGPoint) -> NSBezierPath {
-                let path = NSBezierPath()
-                path.lineCapStyle = .round
+            // One unbroken line with an end bar and arrowhead at each end. The quarter and half
+            // zones only decide where it can be grabbed.
+            let path = NSBezierPath()
+            path.lineCapStyle = .round
+            path.move(to: p0); path.line(to: p1)
+            func addEnd(at end: CGPoint, toward other: CGPoint) {
                 switch m.direction {
                 case .horizontal:
                     path.move(to: CGPoint(x: end.x, y: end.y - capLength / 2)); path.line(to: CGPoint(x: end.x, y: end.y + capLength / 2))
-                    path.move(to: end); path.line(to: inner)
                     if abs(p1.x - p0.x) > arrow * 3 {
-                        let step = end.x < inner.x ? arrow : -arrow
+                        let step = end.x < other.x ? arrow : -arrow
                         path.move(to: CGPoint(x: end.x + step, y: end.y + arrow)); path.line(to: end); path.line(to: CGPoint(x: end.x + step, y: end.y - arrow))
                     }
                 case .vertical:
                     path.move(to: CGPoint(x: end.x - capLength / 2, y: end.y)); path.line(to: CGPoint(x: end.x + capLength / 2, y: end.y))
-                    path.move(to: end); path.line(to: inner)
                     if abs(p1.y - p0.y) > arrow * 3 {
-                        let step = end.y < inner.y ? arrow : -arrow
+                        let step = end.y < other.y ? arrow : -arrow
                         path.move(to: CGPoint(x: end.x + arrow, y: end.y + step)); path.line(to: end); path.line(to: CGPoint(x: end.x - arrow, y: end.y + step))
                     }
                 }
-                return path
             }
-            let middle = NSBezierPath()
-            middle.lineCapStyle = .round
-            middle.move(to: quarter0); middle.line(to: quarter1)
-            let parts: [(NSBezierPath, NSColor, GapZone)] = [
-                (endPath(at: p0, toward: quarter0), color(for: .first), .first),
-                (middle, color(for: .middle), .middle),
-                (endPath(at: p1, toward: quarter1), color(for: .second), .second)
-            ]
-            for (path, stroke, zone) in parts {
-                let isActive = activeZone == zone
-                // A dark edge keeps the arrow readable on any background.
-                let outline = path.copy() as! NSBezierPath
-                outline.lineWidth = (isActive ? 3 : 2.25) + 2
-                NSColor.black.withAlphaComponent(0.4).setStroke()
-                outline.stroke()
-                path.lineWidth = isActive ? 3 : 2.25
-                stroke.setStroke()
-                path.stroke()
-            }
+            addEnd(at: p0, toward: p1)
+            addEnd(at: p1, toward: p0)
+            let isActive = activeZone != nil
+            // A dark edge keeps the arrow readable on any background.
+            let outline = path.copy() as! NSBezierPath
+            outline.lineWidth = (isActive ? 3 : 2.25) + 2
+            NSColor.black.withAlphaComponent(0.4).setStroke()
+            outline.stroke()
+            path.lineWidth = isActive ? 3 : 2.25
+            stroke.setStroke()
+            path.stroke()
 
             let label = gapLabelRect(m)
-            (activeZone == .middle ? NSColor.controlAccentColor : gray).withAlphaComponent(0.92).setFill()
+            stroke.withAlphaComponent(0.92).setFill()
             NSBezierPath(roundedRect: label, xRadius: 5, yRadius: 5).fill()
             gapLabel(m).draw(at: CGPoint(x: label.minX + 6, y: label.minY + 2))
         }
@@ -2017,12 +2033,10 @@ class DisplayArrangementView: NSView {
     }
 
     // MARK: - Mouse
-    /// A magnifier for zoom drags; AppKit has no public one.
-    private static let magnifierCursor: NSCursor = {
-        let configuration = NSImage.SymbolConfiguration(pointSize: 20, weight: .semibold).applying(NSImage.SymbolConfiguration(paletteColors: [.black, .black]))
-        guard let image = NSImage(systemSymbolName: "plus.magnifyingglass", accessibilityDescription: "Zoom")?.withSymbolConfiguration(configuration) else { return .arrow }
-        return NSCursor(image: image, hotSpot: NSPoint(x: image.size.width * 0.42, y: image.size.height * 0.42))
-    }()
+    /// Holding Z turns a drag anywhere in the workspace into a zoom, like Command-dragging the background.
+    private var isZoomKeyDown = false
+    /// Which magnifier a zoom drag is showing: minus while zooming out.
+    private var zoomCursorIsOut = false
     private var pushedCursor = false
 
     private func pushCursor(_ cursor: NSCursor) {
@@ -2100,6 +2114,12 @@ class DisplayArrangementView: NSView {
         pendingCollapse = nil
         didDrag = false
 
+        // With Z held, a drag anywhere zooms.
+        if isZoomKeyDown {
+            beginZoomDrag(at: point, optionHeld: event.modifierFlags.contains(.option))
+            return
+        }
+
         // Dragging out of a ruler creates a guide.
         if let axis = rulerAxis(at: point) {
             undoName = "Add Guide"
@@ -2147,9 +2167,9 @@ class DisplayArrangementView: NSView {
             return
         }
 
-        // The lock icon is only visible (and clickable) on locked or selected displays.
+        // Every display's lock icon is clickable.
         if let locked = physicalLayout.displays.reversed().first(where: {
-            ($0.isLocked || selectedDisplayIDs.contains($0.id)) && lockIconRect(in: physicalRectToView($0)).contains(point)
+            lockIconRect(in: physicalRectToView($0)).contains(point)
         }) {
             undoName = locked.isLocked ? "Unlock Display" : "Lock Display"
             select(.display(locked.id))
@@ -2214,13 +2234,7 @@ class DisplayArrangementView: NSView {
 
         // Command-drag on the background zooms, keeping the selection.
         if event.modifierFlags.contains(.command) {
-            pushCursor(Self.magnifierCursor)
-            isZoomDragging = true
-            zoomDragStart = point
-            zoomDragStartZoom = zoom
-            // Option zooms around the middle of the viewport instead of where the drag began.
-            zoomDragAnchorPoint = event.modifierFlags.contains(.option) ? CGPoint(x: bounds.midX, y: bounds.midY) : point
-            zoomDragAnchor = viewToPhysical(zoomDragAnchorPoint)
+            beginZoomDrag(at: point, optionHeld: event.modifierFlags.contains(.option))
             return
         }
 
@@ -2229,6 +2243,17 @@ class DisplayArrangementView: NSView {
         panStartPoint = point
         panStartOffset = viewOffset
         isPanning = true
+    }
+
+    private func beginZoomDrag(at point: CGPoint, optionHeld: Bool) {
+        zoomCursorIsOut = false
+        pushCursor(ToolCursors.zoomIn)
+        isZoomDragging = true
+        zoomDragStart = point
+        zoomDragStartZoom = zoom
+        // Option zooms around the middle of the viewport instead of where the drag began.
+        zoomDragAnchorPoint = optionHeld ? CGPoint(x: bounds.midX, y: bounds.midY) : point
+        zoomDragAnchor = viewToPhysical(zoomDragAnchorPoint)
     }
 
     override func mouseDragged(
@@ -2326,6 +2351,13 @@ class DisplayArrangementView: NSView {
             // Dragging up zooms in, down zooms out; the point under the cursor at the start stays put.
             let newZoom = min(max(zoomDragStartZoom * exp((currentPoint.y - zoomDragStart.y) * 0.01), 0.05), 10)
             zoom = newZoom
+            // A minus on the magnifier while the drag is zooming out.
+            let zoomingOut = newZoom < zoomDragStartZoom
+            if zoomingOut != zoomCursorIsOut {
+                zoomCursorIsOut = zoomingOut
+                popCursor()
+                pushCursor(zoomingOut ? ToolCursors.zoomOut : ToolCursors.zoomIn)
+            }
             viewOffset = CGPoint(
                 x: zoomDragAnchorPoint.x - zoomDragAnchor.x * pointsPerInch,
                 y: zoomDragAnchorPoint.y - zoomDragAnchor.y * pointsPerInch
@@ -2403,7 +2435,7 @@ class DisplayArrangementView: NSView {
         if let guideDrag, let guide = GuideStore.shared.guide(withID: guideDrag) {
             // Dropping a guide back on its ruler removes it.
             let point = convert(event.locationInWindow, from: nil)
-            let onRuler = guide.axis == .horizontal ? point.x <= rulerSize : point.y >= bounds.maxY - rulerSize
+            let onRuler = GuideSettings.showRulers && guide.axis == .horizontal ? point.x <= rulerSize : point.y >= bounds.maxY - rulerSize
             if onRuler {
                 GuideStore.shared.remove(guideDrag)
                 selectedGuideIDs.remove(guideDrag)
@@ -2506,10 +2538,21 @@ class DisplayArrangementView: NSView {
     override func scrollWheel(
         with event: NSEvent
     ) {
-        // Zoom around the cursor, or around the middle of the viewport if the cursor is outside it
-        // or Option is held.
+        // Option scrolls the workspace: up and down, or with Shift left and right.
+        if event.modifierFlags.contains(.option) {
+            let dx = event.scrollingDeltaX, dy = event.scrollingDeltaY
+            if event.modifierFlags.contains(.shift) {
+                // Shift may turn a mouse wheel's vertical movement into horizontal, so use whichever arrived.
+                viewOffset.x += abs(dx) > abs(dy) ? dx : dy
+            } else {
+                viewOffset.y -= dy
+            }
+            needsDisplay = true
+            return
+        }
+        // Zoom around the cursor, or around the middle of the viewport if the cursor is outside it.
         let location = convert(event.locationInWindow, from: nil)
-        let anchor = bounds.contains(location) && !event.modifierFlags.contains(.option) ? location : CGPoint(x: bounds.midX, y: bounds.midY)
+        let anchor = bounds.contains(location) ? location : CGPoint(x: bounds.midX, y: bounds.midY)
         setZoom(zoom * exp(CGFloat(event.scrollingDeltaY) * 0.01), keeping: anchor)
     }
 

@@ -12,7 +12,8 @@ final class SettingsPanel: NSView {
     let identifyButton = NSButton(title: "Identify Displays", target: nil, action: nil)
     let excludePrimaryCheckbox = NSButton(checkboxWithTitle: "Exclude primary", target: nil, action: nil)
 
-    private let fractionsCheckbox = NSButton(checkboxWithTitle: "Show measurements as fractions", target: nil, action: nil)
+    private let fractionsCheckbox = NSButton(checkboxWithTitle: "Show units as fractions", target: nil, action: nil)
+    private let rulersCheckbox = NSButton(checkboxWithTitle: "Show Rulers", target: nil, action: nil)
     private let bezelControl = NSSegmentedControl(labels: ["All", "Per display", "None"], trackingMode: .selectOne, target: nil, action: nil)
     private let edgeGuidesCheckbox = NSButton(checkboxWithTitle: "Edge guides", target: nil, action: nil)
     private let edgeScopeControl = NSSegmentedControl(labels: ["All", "Selected"], trackingMode: .selectOne, target: nil, action: nil)
@@ -47,6 +48,9 @@ final class SettingsPanel: NSView {
         let fractions = vertical([fractionsCheckbox, fractionsNote], spacing: 2)
         syncFractions()
         NotificationCenter.default.addObserver(forName: MeasurementFormat.didChange, object: nil, queue: .main) { [weak self] _ in self?.syncFractions() }
+
+        rulersCheckbox.target = self; rulersCheckbox.action = #selector(rulersToggled)
+        rulersCheckbox.toolTip = "Rulers along the top and left of the workspace. Drag from one to create a guide."
 
         // Bezels: a global override over each display's own Show bezel setting.
         let bezelLabel = NSTextField(labelWithString: "Show Display Bezels")
@@ -85,7 +89,7 @@ final class SettingsPanel: NSView {
         NotificationCenter.default.addObserver(forName: GuideSettings.didChange, object: nil, queue: .main) { [weak self] _ in self?.syncGuideControls() }
         syncGuideControls()
 
-        let stack = vertical([title, identify, fractions, bezels, guides], spacing: 12)
+        let stack = vertical([title, identify, fractions, rulersCheckbox, bezels, guides], spacing: 12)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -105,6 +109,7 @@ final class SettingsPanel: NSView {
     private func syncFractions() { fractionsCheckbox.state = MeasurementFormat.useFractions ? .on : .off }
 
     private func syncGuideControls() {
+        rulersCheckbox.state = GuideSettings.showRulers ? .on : .off
         edgeGuidesCheckbox.state = GuideSettings.showEdgeGuides ? .on : .off
         edgeScopeControl.selectedSegment = GuideSettings.edgeScope.rawValue
         edgeScopeControl.isEnabled = GuideSettings.showEdgeGuides
@@ -115,6 +120,7 @@ final class SettingsPanel: NSView {
     }
 
     @objc private func fractionsToggled() { MeasurementFormat.useFractions = fractionsCheckbox.state == .on }
+    @objc private func rulersToggled() { GuideSettings.showRulers = rulersCheckbox.state == .on }
     @objc private func bezelChanged() { BezelVisibility.current = bezelChoices[min(max(bezelControl.selectedSegment, 0), bezelChoices.count - 1)] }
     @objc private func edgeGuidesToggled() { GuideSettings.showEdgeGuides = edgeGuidesCheckbox.state == .on }
     @objc private func edgeScopeChanged() { GuideSettings.edgeScope = EdgeGuideScope(rawValue: edgeScopeControl.selectedSegment) ?? .allDisplays }

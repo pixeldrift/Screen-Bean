@@ -59,6 +59,12 @@ enum GuideSettings {
         set { set(newValue, forKey: "ScreenBean.ShowEdgeGuides") }
     }
 
+    /// The rulers along the top and left of the workspace.
+    static var showRulers: Bool {
+        get { bool("ScreenBean.ShowRulers", default: true) }
+        set { set(newValue, forKey: "ScreenBean.ShowRulers") }
+    }
+
     /// The guides dragged out of the rulers.
     static var showCustomGuides: Bool {
         get { bool("ScreenBean.ShowCustomGuides", default: true) }

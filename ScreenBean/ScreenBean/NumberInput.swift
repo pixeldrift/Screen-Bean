@@ -152,10 +152,3 @@ final class ScrubLabel: NSTextField {
         lastX = x
     }
 }
-
-/// Two equal-width columns, used for pairs of labeled inputs.
-func twoColumnGrid(_ a: NSView, _ b: NSView) -> NSStackView {
-    let stack = NSStackView(views: [a, b])
-    stack.distribution = .fillEqually; stack.spacing = 16; stack.alignment = .top
-    return stack
-}
