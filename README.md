@@ -532,7 +532,7 @@ Organized by topic. Checked items are built.
 * [x]	Import, position, scale, rotate, flip and stretch a reference image
 * [x]	Adjust opacity and whether it draws above or below the displays
 * [x]	Lock reference image
-* [x]	Align to Display: mark a display's four corners in the photo, or draw a line and enter its real length, to scale and place the reference image to match (best fit; photos are never perfect)
+* [x]	Align to Display: click a display's four corners in the photo (any order) to scale, turn and place the reference image on it (best fit; photos are never perfect), or mark a line of known length to set only the scale
 
 ### Global Options
 

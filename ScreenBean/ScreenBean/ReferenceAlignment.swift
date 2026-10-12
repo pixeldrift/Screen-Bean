@@ -2,9 +2,9 @@
 //  ReferenceAlignment.swift
 //  ScreenBean
 //
-//  Works out where a reference photo goes in the workspace from marks made on it: either the four
-//  corners of a display, or a line of known length. Photos are taken at an angle through a lens, so
-//  the fit is a uniform scale, a turn and a shift: the best match, not a perfect one.
+//  Works out the size and place of a reference photo in the workspace from marks made on it: the four
+//  corners of a display, or a line of known length (which sets only the scale). Photos are taken at an
+//  angle through a lens, so the fit is a uniform scale, a turn and a shift: the best match, not a perfect one.
 //
 //  Marks are in image points with the origin at the top left and y pointing down, the way a photo
 //  is seen. Workspace positions are in inches with y pointing up.
@@ -14,30 +14,28 @@ import CoreGraphics
 import Foundation
 
 enum ReferenceAlignment {
-    enum Edge { case top, bottom, left, right }
-
-    /// What a marked line stands for.
-    enum LineTarget {
-        /// The line runs along this edge of a display's screen (the rectangle, in workspace inches).
-        case edge(Edge, CGRect)
-        /// Only the scale is known; the line keeps its place and the image keeps its turn.
-        case scaleOnly
-    }
-
     private static func yUp(_ point: CGPoint, imageHeight: CGFloat) -> CGPoint { CGPoint(x: point.x, y: imageHeight - point.y) }
 
     private static func turned(_ point: CGPoint, by radians: Double) -> CGPoint {
         CGPoint(x: point.x * cos(radians) - point.y * sin(radians), y: point.x * sin(radians) + point.y * cos(radians))
     }
 
-    /// An angle in degrees folded into -90...90, since a line has no direction.
-    private static func foldedToHalfTurn(_ degrees: Double) -> Double {
-        var d = ImageFrame.normalized(degrees)
-        if d > 90 { d -= 180 } else if d <= -90 { d += 180 }
-        return d
-    }
-
     // MARK: - Corners
+
+    /// Which of four clicked points is the top-left, top-right, bottom-right and bottom-left corner, as indices into
+    /// `points` (origin at the top left, y down). The points can be clicked in any order; the photo is assumed to be
+    /// roughly upright, with the top of the display toward the top of the photo.
+    static func cornerOrder(of points: [CGPoint]) -> [Int]? {
+        guard points.count == 4 else { return nil }
+        let center = CGPoint(x: points.map(\.x).reduce(0, +) / 4, y: points.map(\.y).reduce(0, +) / 4)
+        // With y pointing down, increasing angle runs clockwise.
+        let clockwise = points.indices.sorted {
+            atan2(points[$0].y - center.y, points[$0].x - center.x) < atan2(points[$1].y - center.y, points[$1].x - center.x)
+        }
+        // The top-left corner is the one nearest the photo's top-left.
+        guard let first = clockwise.indices.min(by: { points[clockwise[$0]].x + points[clockwise[$0]].y < points[clockwise[$1]].x + points[clockwise[$1]].y }) else { return nil }
+        return (0..<4).map { clockwise[(first + $0) % 4] }
+    }
 
     /// Places the image so each marked point lands as near as possible on its target (for a display, its four
     /// corners in the same order). Needs at least two points.
@@ -70,43 +68,16 @@ enum ReferenceAlignment {
         )
     }
 
-    // MARK: - Line
+    // MARK: - Measurement
 
-    /// Scales the image so the line between the two marks is `length` inches long. For an edge, the image is also
-    /// turned so the line runs along it, with the line's middle on the edge's middle.
-    static func fitLine(from first: CGPoint, to second: CGPoint, imageSize: CGSize, length: Double, target: LineTarget, current: ImageFrame) -> ImageFrame? {
-        guard imageSize.width > 0, imageSize.height > 0, length > 0 else { return nil }
-        let a = yUp(first, imageHeight: imageSize.height), b = yUp(second, imageHeight: imageSize.height)
-        let along = CGPoint(x: b.x - a.x, y: b.y - a.y)
-        let pixelLength = Double(hypot(along.x, along.y))
+    /// Sizes the image so the line between the two marks is `length` inches long. Only the size changes: the image
+    /// keeps its center, turn, stretch and flips.
+    static func scaled(toMeasure first: CGPoint, _ second: CGPoint, imageSize: CGSize, length: Double, current: ImageFrame) -> ImageFrame? {
+        guard imageSize.width > 0, length > 0 else { return nil }
+        let pixelLength = Double(hypot(second.x - first.x, second.y - first.y))
         guard pixelLength > 0 else { return nil }
-        let scale = length / pixelLength
-
-        let middle = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
-        let local = CGPoint(x: middle.x - imageSize.width / 2, y: middle.y - imageSize.height / 2)
-        let lineAngle = Double(atan2(along.y, along.x)) * 180 / .pi
-
-        let degrees: Double
-        let anchor: CGPoint
-        switch target {
-        case .edge(let edge, let rect):
-            switch edge {
-            case .top: degrees = foldedToHalfTurn(-lineAngle); anchor = CGPoint(x: rect.midX, y: rect.maxY)
-            case .bottom: degrees = foldedToHalfTurn(-lineAngle); anchor = CGPoint(x: rect.midX, y: rect.minY)
-            case .left: degrees = foldedToHalfTurn(90 - lineAngle); anchor = CGPoint(x: rect.minX, y: rect.midY)
-            case .right: degrees = foldedToHalfTurn(90 - lineAngle); anchor = CGPoint(x: rect.maxX, y: rect.midY)
-            }
-        case .scaleOnly:
-            // Where the line's middle is now stays where it is.
-            degrees = current.rotation
-            let before = Double(current.width) / Double(imageSize.width)
-            let shown = turned(CGPoint(x: local.x * before, y: local.y * before * current.stretch), by: current.rotation * .pi / 180)
-            anchor = CGPoint(x: current.centerX + shown.x, y: current.centerY + shown.y)
-        }
-        let placed = turned(CGPoint(x: local.x * scale, y: local.y * scale), by: degrees * .pi / 180)
-        return ImageFrame(
-            centerX: Double(anchor.x - placed.x), centerY: Double(anchor.y - placed.y),
-            width: Double(imageSize.width) * scale, rotation: ImageFrame.normalized(degrees)
-        )
+        var frame = current
+        frame.width = Double(imageSize.width) * length / pixelLength
+        return frame
     }
 }

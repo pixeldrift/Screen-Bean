@@ -123,39 +123,27 @@ struct ReferenceAlignmentTests {
         #expect(close(frame.centerY, 20))
     }
 
-    /// A line along a display's top edge sets the scale and puts the line's middle on the edge's middle.
-    @Test func lineAlongTopEdge() throws {
-        let rect = CGRect(x: 0, y: 0, width: 20, height: 10)
-        let current = ImageFrame(centerX: 0, centerY: 0, width: 30)
-        let frame = try #require(ReferenceAlignment.fitLine(
-            from: CGPoint(x: 100, y: 100), to: CGPoint(x: 300, y: 100), imageSize: CGSize(width: 1000, height: 500),
-            length: 10, target: .edge(.top, rect), current: current))
-        #expect(close(frame.width, 50))
-        #expect(close(frame.rotation, 0))
-        #expect(close(frame.centerX, 25))
-        #expect(close(frame.centerY, 2.5))
+    /// Four points clicked in any order are sorted into top-left, top-right, bottom-right, bottom-left.
+    @Test func cornersSortThemselves() {
+        // Clicked as bottom-right, top-left, bottom-left, top-right (y down).
+        let clicked = [CGPoint(x: 300, y: 200), CGPoint(x: 100, y: 100), CGPoint(x: 100, y: 200), CGPoint(x: 300, y: 100)]
+        #expect(ReferenceAlignment.cornerOrder(of: clicked) == [1, 3, 0, 2])
+        #expect(ReferenceAlignment.cornerOrder(of: Array(clicked.prefix(3))) == nil)
     }
 
-    /// A slightly tilted line along an edge turns the image level.
-    @Test func lineLevelsTheImage() throws {
-        let rect = CGRect(x: 0, y: 0, width: 20, height: 10)
-        let current = ImageFrame(centerX: 0, centerY: 0, width: 30)
-        // Up and to the right in the photo by about 5.7 degrees.
-        let frame = try #require(ReferenceAlignment.fitLine(
-            from: CGPoint(x: 100, y: 120), to: CGPoint(x: 300, y: 100), imageSize: CGSize(width: 1000, height: 500),
-            length: 10, target: .edge(.bottom, rect), current: current))
-        #expect(frame.rotation < 0 && frame.rotation > -10)
+    /// A slightly turned display still sorts the same way.
+    @Test func cornersSortWhenTilted() {
+        let clicked = [CGPoint(x: 120, y: 90), CGPoint(x: 310, y: 120), CGPoint(x: 290, y: 220), CGPoint(x: 100, y: 190)]
+        #expect(ReferenceAlignment.cornerOrder(of: clicked) == [0, 1, 2, 3])
     }
 
-    /// With only a length, the image scales about the line's middle and keeps its turn.
-    @Test func lineScaleOnlyKeepsItsPlace() throws {
-        // A 100 x 100 image, 10 inches wide, centered at the origin. A line across its middle.
-        let current = ImageFrame(centerX: 0, centerY: 0, width: 10)
-        let frame = try #require(ReferenceAlignment.fitLine(
-            from: CGPoint(x: 0, y: 50), to: CGPoint(x: 100, y: 50), imageSize: CGSize(width: 100, height: 100),
-            length: 20, target: .scaleOnly, current: current))
+    /// Measuring a line only changes the size.
+    @Test func measurementOnlyScales() throws {
+        let current = ImageFrame(centerX: 3, centerY: -4, width: 10, rotation: 20, stretch: 1.2, flipHorizontal: true)
+        let frame = try #require(ReferenceAlignment.scaled(
+            toMeasure: CGPoint(x: 0, y: 50), CGPoint(x: 100, y: 50), imageSize: CGSize(width: 100, height: 100), length: 20, current: current))
         #expect(close(frame.width, 20))
-        #expect(close(frame.centerX, 0))
-        #expect(close(frame.centerY, 0))
+        #expect(frame.centerX == 3 && frame.centerY == -4)
+        #expect(frame.rotation == 20 && frame.stretch == 1.2 && frame.flipHorizontal)
     }
 }

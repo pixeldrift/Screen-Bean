@@ -24,9 +24,8 @@ struct AlignTarget {
 final class AlignCanvasView: NSView {
     var image: NSImage? { didSet { hasFitted = false; needsLayout = true; needsDisplay = true } }
     var maxPoints = 4 { didSet { points = Array(points.prefix(maxPoints)); needsDisplay = true } }
-    var pointLabels = ["TL", "TR", "BR", "BL"] { didSet { needsDisplay = true } }
-    /// A quadrilateral joins four points; a line joins two.
-    var joinsAsQuad = true { didSet { needsDisplay = true } }
+    /// Four points are a display's corners, joined as a box and named once all four are down; two points are a line.
+    var marksCorners = true { didSet { needsDisplay = true } }
     var onPointsChanged: (() -> Void)?
 
     private(set) var points: [CGPoint] = []
@@ -92,11 +91,14 @@ final class AlignCanvasView: NSView {
         let marks = points.map(viewPoint)
         guard !marks.isEmpty else { return }
         let accent = NSColor.systemYellow
+        // Once all four corners are down, they are joined in box order and named, however they were clicked.
+        let corners = marksCorners ? ReferenceAlignment.cornerOrder(of: points) : nil
+        let joinOrder = corners ?? Array(marks.indices)
         if marks.count > 1 {
             let path = NSBezierPath()
-            path.move(to: marks[0])
-            for mark in marks.dropFirst() { path.line(to: mark) }
-            if joinsAsQuad && marks.count == 4 {
+            path.move(to: marks[joinOrder[0]])
+            for index in joinOrder.dropFirst() { path.line(to: marks[index]) }
+            if corners != nil {
                 path.close()
                 accent.withAlphaComponent(0.15).setFill()
                 path.fill()
@@ -108,6 +110,7 @@ final class AlignCanvasView: NSView {
             accent.setStroke()
             path.stroke()
         }
+        let names = ["TL", "TR", "BR", "BL"]
         for (index, mark) in marks.enumerated() {
             let ring = NSBezierPath(ovalIn: CGRect(x: mark.x - 7, y: mark.y - 7, width: 14, height: 14))
             ring.lineWidth = 3
@@ -123,13 +126,14 @@ final class AlignCanvasView: NSView {
             cross.lineWidth = 1
             accent.setStroke()
             cross.stroke()
-            if index < pointLabels.count {
-                let text = NSAttributedString(string: pointLabels[index], attributes: [
-                    .font: NSFont.systemFont(ofSize: 11, weight: .bold), .foregroundColor: NSColor.white,
-                    .backgroundColor: NSColor.black.withAlphaComponent(0.6)
-                ])
-                text.draw(at: CGPoint(x: mark.x + 10, y: mark.y - 18))
-            }
+            // Corners are named by where they turn out to be; anything else by the order clicked.
+            var name = "\(index + 1)"
+            if let corners, let role = corners.firstIndex(of: index) { name = names[role] }
+            let text = NSAttributedString(string: name, attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .bold), .foregroundColor: NSColor.white,
+                .backgroundColor: NSColor.black.withAlphaComponent(0.6)
+            ])
+            text.draw(at: CGPoint(x: mark.x + 10, y: mark.y - 18))
         }
     }
 
@@ -208,22 +212,7 @@ final class AlignCanvasView: NSView {
 // MARK: - Window
 
 final class AlignToDisplayController: NSObject, NSWindowDelegate {
-    private enum Mode: Int { case corners, line }
-
-    /// What the line stands for, in the order of the menu.
-    private enum LineChoice: Int, CaseIterable {
-        case top, bottom, left, right, other
-
-        var title: String {
-            switch self {
-            case .top: return "the display's top edge"
-            case .bottom: return "the display's bottom edge"
-            case .left: return "the display's left edge"
-            case .right: return "the display's right edge"
-            case .other: return "some other distance"
-            }
-        }
-    }
+    private enum Mode: Int { case corners, measure }
 
     let window: NSWindow
     /// Called with the frame to give the image when Match is pressed.
@@ -231,13 +220,13 @@ final class AlignToDisplayController: NSObject, NSWindowDelegate {
     var onClose: (() -> Void)?
 
     private let canvas = AlignCanvasView()
-    private let modeControl = NSSegmentedControl(labels: ["Four Corners", "Line"], trackingMode: .selectOne, target: nil, action: nil)
+    private let modeControl = NSSegmentedControl(labels: ["Four Corners", "Set Measurement"], trackingMode: .selectOne, target: nil, action: nil)
     private let displayMenu = NSPopUpButton(title: "", target: nil, action: nil)
-    private let lineMenu = NSPopUpButton(title: "", target: nil, action: nil)
     private let lengthInput = NumberInput()
     private let instruction = NSTextField(labelWithString: "")
     private let matchButton = NSButton(title: "Match", target: nil, action: nil)
-    private var lineControls: NSView!
+    private var displayControls: NSView!
+    private var measureControls: NSView!
 
     private let image: NSImage
     private let targets: [AlignTarget]
@@ -273,11 +262,8 @@ final class AlignToDisplayController: NSObject, NSWindowDelegate {
         displayMenu.removeAllItems()
         for target in targets { displayMenu.addItem(withTitle: "\(target.label) – \(target.name)") }
         if let preselect, let index = targets.firstIndex(where: { $0.id == preselect }) { displayMenu.selectItem(at: index) }
-        displayMenu.target = self; displayMenu.action = #selector(targetChanged)
+        displayMenu.target = self; displayMenu.action = #selector(displayChanged)
 
-        lineMenu.removeAllItems()
-        for choice in LineChoice.allCases { lineMenu.addItem(withTitle: choice.title) }
-        lineMenu.target = self; lineMenu.action = #selector(targetChanged)
         lengthInput.minimum = 0.01
         lengthInput.step = 0.1
         lengthInput.onChange = { [weak self] _ in self?.updateState() }
@@ -288,15 +274,19 @@ final class AlignToDisplayController: NSObject, NSWindowDelegate {
             field.font = .systemFont(ofSize: 12)
             return field
         }
-        let lengthColumn = lengthInput.labeled("Length", unit: "inches")
-        let lineRow = NSStackView(views: [label("The line is"), lineMenu, lengthColumn])
-        lineRow.spacing = 8
-        lineRow.alignment = .bottom
-        lineControls = lineRow
-        lineControls.isHidden = true
+        let displayRow = NSStackView(views: [label("Display:"), displayMenu])
+        displayRow.spacing = 8
+        displayRow.alignment = .centerY
+        displayControls = displayRow
+        // How long the line you mark really is.
+        let measureRow = NSStackView(views: [label("The line is"), lengthInput, label(MeasurementFormat.unitName + " long")])
+        measureRow.spacing = 8
+        measureRow.alignment = .centerY
+        measureControls = measureRow
+        measureControls.isHidden = true
 
-        let top = NSStackView(views: [modeControl, label("Display:"), displayMenu, lineControls, NSView()])
-        top.spacing = 10
+        let top = NSStackView(views: [modeControl, displayControls, measureControls, NSView()])
+        top.spacing = 14
         top.alignment = .centerY
         top.edgeInsets = NSEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
 
@@ -335,61 +325,44 @@ final class AlignToDisplayController: NSObject, NSWindowDelegate {
             bottom.bottomAnchor.constraint(equalTo: content.bottomAnchor)
         ])
         window.contentView = content
-        targetChanged()
         updateState()
     }
 
     // MARK: State
 
     private var mode: Mode { Mode(rawValue: modeControl.selectedSegment) ?? .corners }
-    private var lineChoice: LineChoice { LineChoice(rawValue: lineMenu.indexOfSelectedItem) ?? .other }
 
     private var selectedTarget: AlignTarget? {
         targets.indices.contains(displayMenu.indexOfSelectedItem) ? targets[displayMenu.indexOfSelectedItem] : nil
     }
 
-    /// The line follows a display's edge, so a display has to be chosen; "other" doesn't use one.
-    private var usesDisplay: Bool { mode == .corners || lineChoice != .other }
-
     @objc private func modeChanged() {
         canvas.clearPoints()
         canvas.maxPoints = mode == .corners ? 4 : 2
-        canvas.pointLabels = mode == .corners ? ["TL", "TR", "BR", "BL"] : ["1", "2"]
-        canvas.joinsAsQuad = mode == .corners
-        lineControls.isHidden = mode == .corners
-        targetChanged()
+        canvas.marksCorners = mode == .corners
+        displayControls.isHidden = mode != .corners
+        measureControls.isHidden = mode != .measure
+        matchButton.title = mode == .corners ? "Match" : "Apply Scale"
         updateState()
     }
 
-    /// For an edge, the line's length starts as that edge's length.
-    @objc private func targetChanged() {
-        if mode == .line, let target = selectedTarget {
-            switch lineChoice {
-            case .top, .bottom: lengthInput.value = Double(target.rect.width)
-            case .left, .right: lengthInput.value = Double(target.rect.height)
-            case .other: break
-            }
-        }
-        displayMenu.isEnabled = usesDisplay
-        updateState()
-    }
+    @objc private func displayChanged() { updateState() }
 
     private func updateState() {
         let marked = canvas.points.count
         switch mode {
         case .corners:
-            let names = ["top-left", "top-right", "bottom-right", "bottom-left"]
             instruction.stringValue = marked < 4
-                ? "Click the display's \(names[marked]) corner in the photo."
-                : "Drag any point to adjust it, then press Match."
+                ? "Click the four corners of the display in the photo, in any order (\(marked) of 4)."
+                : "Drag any point to adjust it, then press Match to scale, turn and place the image on the display."
             matchButton.isEnabled = marked == 4 && selectedTarget != nil
-        case .line:
+        case .measure:
             switch marked {
-            case 0: instruction.stringValue = "Click one end of a line you know the length of."
+            case 0: instruction.stringValue = "Click one end of something in the photo whose real length you know."
             case 1: instruction.stringValue = "Click the other end."
-            default: instruction.stringValue = "Drag the ends to adjust, check the length, then press Match."
+            default: instruction.stringValue = "Drag the ends to adjust, enter the real length, then press Apply Scale. The image keeps its position."
             }
-            matchButton.isEnabled = marked == 2 && lengthInput.value > 0 && (lineChoice == .other || selectedTarget != nil)
+            matchButton.isEnabled = marked == 2 && lengthInput.value > 0
         }
     }
 
@@ -404,21 +377,13 @@ final class AlignToDisplayController: NSObject, NSWindowDelegate {
         let frame: ImageFrame?
         switch mode {
         case .corners:
-            guard let rect = selectedTarget?.rect else { return }
+            guard let rect = selectedTarget?.rect, let order = ReferenceAlignment.cornerOrder(of: canvas.points) else { return }
             // Top-left, top-right, bottom-right, bottom-left, with the workspace's y pointing up.
             let corners = [CGPoint(x: rect.minX, y: rect.maxY), CGPoint(x: rect.maxX, y: rect.maxY), CGPoint(x: rect.maxX, y: rect.minY), CGPoint(x: rect.minX, y: rect.minY)]
-            frame = ReferenceAlignment.fitPoints(imagePoints: canvas.points, imageSize: image.size, targets: corners)
-        case .line:
+            frame = ReferenceAlignment.fitPoints(imagePoints: order.map { canvas.points[$0] }, imageSize: image.size, targets: corners)
+        case .measure:
             guard canvas.points.count == 2 else { return }
-            let target: ReferenceAlignment.LineTarget
-            switch lineChoice {
-            case .top: target = selectedTarget.map { .edge(.top, $0.rect) } ?? .scaleOnly
-            case .bottom: target = selectedTarget.map { .edge(.bottom, $0.rect) } ?? .scaleOnly
-            case .left: target = selectedTarget.map { .edge(.left, $0.rect) } ?? .scaleOnly
-            case .right: target = selectedTarget.map { .edge(.right, $0.rect) } ?? .scaleOnly
-            case .other: target = .scaleOnly
-            }
-            frame = ReferenceAlignment.fitLine(from: canvas.points[0], to: canvas.points[1], imageSize: image.size, length: lengthInput.value, target: target, current: current)
+            frame = ReferenceAlignment.scaled(toMeasure: canvas.points[0], canvas.points[1], imageSize: image.size, length: lengthInput.value, current: current)
         }
         guard let frame else { NSSound.beep(); return }
         onMatch?(frame)
