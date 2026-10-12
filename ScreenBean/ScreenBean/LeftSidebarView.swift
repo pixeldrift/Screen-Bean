@@ -88,7 +88,8 @@ final class LeftSidebarView: NSView {
             edge.widthAnchor.constraint(equalToConstant: 1),
 
             content.leadingAnchor.constraint(equalTo: leadingAnchor),
-            content.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -1),
+            // The contents keep their expanded width even while the sidebar is collapsed (and hidden).
+            content.widthAnchor.constraint(equalToConstant: Self.expandedWidth - 1),
             content.topAnchor.constraint(equalTo: topAnchor),
             content.bottomAnchor.constraint(equalTo: bottomAnchor),
 

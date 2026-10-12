@@ -10,8 +10,11 @@ enum SidebarMetrics {
     static let width: CGFloat = 270
     static let inspectorInset: CGFloat = 16
     static let columnSpacing: CGFloat = 16
+    /// What a classic always-visible scroller takes from the scroll area. It is reserved whether or not
+    /// the system draws one, so two columns always fit.
+    static let scrollerAllowance: CGFloat = 15
     /// Width of one of the two input columns, so every input box is the same size.
-    static var columnWidth: CGFloat { (width - inspectorInset * 2 - columnSpacing) / 2 }
+    static var columnWidth: CGFloat { ((width - scrollerAllowance - inspectorInset * 2 - columnSpacing) / 2).rounded(.down) }
 }
 
 final class DisplayInspectorView: NSView {

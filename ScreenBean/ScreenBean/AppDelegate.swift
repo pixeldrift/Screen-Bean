@@ -265,6 +265,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 680), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = "ScreenBean"
         window.delegate = self
+        // The window is built by hand and has nothing to restore.
+        window.isRestorable = false
         window.contentView = container
         window.minSize = NSSize(width: 900, height: 400)
         window.center()
