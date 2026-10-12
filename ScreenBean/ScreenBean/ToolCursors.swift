@@ -57,7 +57,13 @@ enum ToolCursors {
             path.appendArc(withCenter: center, radius: radius, startAngle: 40, endAngle: 320)
             // Arrowhead at the end of the arc.
             let end = CGPoint(x: center.x + radius * cos(320 * .pi / 180), y: center.y + radius * sin(320 * .pi / 180))
-            path.move(to: CGPoint(x: end.x - 5, y: end.y + 1)); path.line(to: end); path.line(to: CGPoint(x: end.x + 1, y: end.y + 5))
+            // The arc runs counterclockwise, so at its end it is heading up and to the right: the head's arms trail behind that.
+            let heading = CGPoint(x: -sin(320 * .pi / 180), y: cos(320 * .pi / 180))
+            let side = CGPoint(x: heading.y, y: -heading.x)
+            func arm(_ sign: CGFloat) -> CGPoint {
+                CGPoint(x: end.x - heading.x * 5 + side.x * 3.5 * sign, y: end.y - heading.y * 5 + side.y * 3.5 * sign)
+            }
+            path.move(to: arm(1)); path.line(to: end); path.line(to: arm(-1))
             NSColor.white.setStroke(); path.lineWidth = 5; path.stroke()
             NSColor.black.setStroke(); path.lineWidth = 2; path.stroke()
             return true

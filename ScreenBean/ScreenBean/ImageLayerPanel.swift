@@ -210,7 +210,7 @@ final class ImageLayerPanel: NSView {
         rotationBox.widthAnchor.constraint(equalToConstant: 76).isActive = true
         let flipH = iconButton("arrow.left.and.right.righttriangle.left.righttriangle.right", tip: "Flip Horizontal") { [weak self] in self?.edit { $0.flipHorizontal.toggle() } }
         let flipV = iconButton("arrow.up.and.down.righttriangle.up.righttriangle.down", tip: "Flip Vertical") { [weak self] in self?.edit { $0.flipVertical.toggle() } }
-        let rotationRow = NSStackView(views: [rotationBox, flipH, flipV])
+        let rotationRow = NSStackView(views: [rotationBox, flipH, flipV, NSView()])
         rotationRow.spacing = 8
         rotationRow.alignment = .bottom
         rotationRow.distribution = .fill
@@ -255,9 +255,10 @@ final class ImageLayerPanel: NSView {
             button.font = .systemFont(ofSize: 11)
             return button
         }
-        let row = NSStackView(views: buttons)
+        // Buttons keep their natural size and sit on the left.
+        let row = NSStackView(views: buttons + [NSView()])
         row.spacing = 6
-        row.distribution = .fillEqually
+        row.distribution = .fill
         return row
     }
 
@@ -324,7 +325,7 @@ final class ImageLayerPanel: NSView {
         let blend = ImageLayerBlend(value: slider.doubleValue)
         if dropZone.image == nil { readout.stringValue = "" }
         else if blend.opacity == 0 { readout.stringValue = "Hidden" }
-        else { readout.stringValue = "\(Int((blend.opacity * 100).rounded()))%, \(blend.aboveDisplays ? "above" : "below")" }
+        else { readout.stringValue = "\(Int((blend.opacity * 100).rounded()))%" }
     }
 }
 

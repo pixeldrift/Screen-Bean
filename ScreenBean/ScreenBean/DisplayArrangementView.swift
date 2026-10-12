@@ -57,10 +57,9 @@ class DisplayArrangementView: NSView {
         slot == .referenceImage ? referenceLayer : wallpaperLayer
     }
 
-    /// Whether an image draws over the displays. A wallpaper previewed clipped to the
-    /// displays always does, since it would otherwise be hidden behind them.
+    /// Whether an image draws over the displays.
     private func drawsAboveDisplays(_ slot: ImageLayerSlot) -> Bool {
-        layer(slot).blend.aboveDisplays || (slot == .wallpaper && wallpaperClipsToDisplays)
+        layer(slot).blend.aboveDisplays
     }
 
     private func setFrame(_ frame: ImageFrame?, for slot: ImageLayerSlot) {
@@ -355,7 +354,11 @@ class DisplayArrangementView: NSView {
         guard !physicalLayout.displays.isEmpty else {
             return
         }
-        for slot in imageSlots where !drawsAboveDisplays(slot) { drawImageLayer(slot) }
+        for slot in imageSlots where !drawsAboveDisplays(slot) {
+            // A wallpaper clipped to the displays goes behind them everywhere but on their screens,
+            // so the bezels stay on top of it.
+            drawImageLayer(slot, part: slot == .wallpaper && wallpaperClipsToDisplays ? .outsideDisplays : .all)
+        }
         for (index, display) in physicalLayout.displays.enumerated() {
             let rect =
                 physicalRectToView(
@@ -369,6 +372,7 @@ class DisplayArrangementView: NSView {
                 label: DisplayIdentity.label(forIndex: index)
             )
         }
+        if wallpaperClipsToDisplays && !drawsAboveDisplays(.wallpaper) { drawImageLayer(.wallpaper, part: .insideDisplays) }
         for slot in imageSlots where drawsAboveDisplays(slot) { drawImageLayer(slot) }
         drawImageLockIcons(in: context)
         drawGuides()
@@ -410,7 +414,10 @@ class DisplayArrangementView: NSView {
         )
     }
 
-    private func drawImageLayer(_ slot: ImageLayerSlot) {
+    /// Which part of an image to draw: a clipped wallpaper is drawn in two parts, either side of the displays.
+    private enum ImagePart { case all, outsideDisplays, insideDisplays }
+
+    private func drawImageLayer(_ slot: ImageLayerSlot, part: ImagePart = .all) {
         let current = layer(slot)
         guard let image = current.image, let physical = physicalRect(of: current) else { return }
         let target = viewRect(forPhysical: physical)
@@ -433,7 +440,7 @@ class DisplayArrangementView: NSView {
             // Full strength on the displays; the slider's opacity everywhere else.
             let screens = NSBezierPath()
             for display in physicalLayout.displays { screens.appendRect(physicalRectToView(display)) }
-            if current.blend.opacity > 0 {
+            if part != .insideDisplays, current.blend.opacity > 0 {
                 NSGraphicsContext.saveGraphicsState()
                 let outside = NSBezierPath(rect: bounds)
                 outside.append(screens)
@@ -442,10 +449,12 @@ class DisplayArrangementView: NSView {
                 drawImage(opacity: CGFloat(current.blend.opacity))
                 NSGraphicsContext.restoreGraphicsState()
             }
-            NSGraphicsContext.saveGraphicsState()
-            screens.addClip()
-            drawImage(opacity: 1)
-            NSGraphicsContext.restoreGraphicsState()
+            if part != .outsideDisplays {
+                NSGraphicsContext.saveGraphicsState()
+                screens.addClip()
+                drawImage(opacity: 1)
+                NSGraphicsContext.restoreGraphicsState()
+            }
         } else if current.blend.opacity > 0 {
             drawImage(opacity: CGFloat(current.blend.opacity))
         }
