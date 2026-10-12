@@ -43,13 +43,13 @@ final class UndoCenter {
     /// `coalesceKey` made within a second of each other (a scrub, a nudge) share one step.
     func record(_ name: String, before: WorkspaceSnapshot, coalesceKey: String? = nil) {
         guard let capture, let now = capture(), now != before else { return }
-        let now = Date()
-        if let key = coalesceKey, key == lastCoalesceKey, now.timeIntervalSince(lastCoalesceTime) < 1, manager.canUndo {
-            lastCoalesceTime = now
+        let currentTime = Date()
+        if let key = coalesceKey, key == lastCoalesceKey, currentTime.timeIntervalSince(lastCoalesceTime) < 1, manager.canUndo {
+            lastCoalesceTime = currentTime
             return
         }
         lastCoalesceKey = coalesceKey
-        lastCoalesceTime = now
+        lastCoalesceTime = currentTime
         register(name, restoring: before)
     }
 
