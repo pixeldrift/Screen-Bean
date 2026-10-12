@@ -2,8 +2,8 @@
 //  DisplaysPanel.swift
 //  ScreenBean
 //
-//  A collapsible list of every display in the layout, as rows or as thumbnails. Clicking one
-//  selects it in the workspace (Shift-click adds to the selection).
+//  A list of every display in the layout, as rows or as thumbnails, for the left sidebar.
+//  Clicking one selects it in the workspace (Shift-click adds to the selection).
 //
 
 import Cocoa
@@ -33,12 +33,13 @@ struct DisplaySummary: Equatable {
 final class DisplaysPanel: NSView {
     /// Called with a display to select, and whether to add it to the selection.
     var onSelect: ((CGDirectDisplayID, Bool) -> Void)?
+    /// Called when the collapse button is clicked.
+    var onCollapse: (() -> Void)?
 
     private enum Mode: Int { case list, thumbnails }
-    private static let expandedKey = "ScreenBean.DisplaysPanelExpanded"
     private static let modeKey = "ScreenBean.DisplaysPanelMode"
 
-    private let toggleButton = NSButton()
+    private let collapseButton = NSButton()
     private let countLabel = NSTextField(labelWithString: "")
     private let modeControl = NSSegmentedControl(images: [
         NSImage(systemSymbolName: "list.bullet", accessibilityDescription: "List") ?? NSImage(),
@@ -48,11 +49,6 @@ final class DisplaysPanel: NSView {
 
     private var summaries: [DisplaySummary] = []
     private var selected: Set<CGDirectDisplayID> = []
-
-    private var isExpanded: Bool {
-        get { UserDefaults.standard.bool(forKey: Self.expandedKey) }
-        set { UserDefaults.standard.set(newValue, forKey: Self.expandedKey) }
-    }
 
     private var mode: Mode {
         get { Mode(rawValue: UserDefaults.standard.integer(forKey: Self.modeKey)) ?? .list }
@@ -65,20 +61,20 @@ final class DisplaysPanel: NSView {
     // MARK: - Layout
 
     private func build() {
-        toggleButton.title = "Displays"
-        toggleButton.font = .boldSystemFont(ofSize: 14)
-        toggleButton.isBordered = false
-        toggleButton.imagePosition = .imageLeading
-        toggleButton.imageHugsTitle = true
-        toggleButton.target = self; toggleButton.action = #selector(toggleExpanded)
-        toggleButton.toolTip = "Show or hide the list of displays"
+        let title = NSTextField(labelWithString: "Displays")
+        title.font = .boldSystemFont(ofSize: 14)
         countLabel.font = .systemFont(ofSize: 11); countLabel.textColor = .secondaryLabelColor
+        collapseButton.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: "Hide displays")
+        collapseButton.isBordered = false
+        collapseButton.contentTintColor = .secondaryLabelColor
+        collapseButton.target = self; collapseButton.action = #selector(collapseClicked)
+        collapseButton.toolTip = "Hide the displays sidebar"
         modeControl.selectedSegment = mode.rawValue
         modeControl.target = self; modeControl.action = #selector(modeChanged)
         modeControl.controlSize = .small
         modeControl.segmentStyle = .texturedRounded
         modeControl.toolTip = "List or thumbnails"
-        let header = NSStackView(views: [toggleButton, countLabel, NSView(), modeControl])
+        let header = NSStackView(views: [title, countLabel, NSView(), modeControl, collapseButton])
         header.spacing = 6
         header.distribution = .fill
         header.alignment = .centerY
@@ -97,13 +93,6 @@ final class DisplaysPanel: NSView {
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
-        applyExpanded()
-    }
-
-    private func applyExpanded() {
-        toggleButton.image = NSImage(systemSymbolName: isExpanded ? "chevron.down" : "chevron.right", accessibilityDescription: isExpanded ? "Collapse" : "Expand")
-        body.isHidden = !isExpanded
-        modeControl.isHidden = !isExpanded
     }
 
     /// Shows the displays. Does nothing if nothing about them has changed, so dragging in the
@@ -153,10 +142,7 @@ final class DisplaysPanel: NSView {
         }
     }
 
-    @objc private func toggleExpanded() {
-        isExpanded.toggle()
-        applyExpanded()
-    }
+    @objc private func collapseClicked() { onCollapse?() }
 
     @objc private func modeChanged() {
         mode = Mode(rawValue: modeControl.selectedSegment) ?? .list

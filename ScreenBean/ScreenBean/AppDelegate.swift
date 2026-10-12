@@ -13,6 +13,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var mainView: DisplayArrangementView?
     private let overlays = DisplayOverlayManager()
     private var sidebarView: SidebarView!
+    private var leftSidebar: LeftSidebarView!
     private var identifyButton: NSButton { sidebarView.settingsPanel.identifyButton }
     private var previewButton: NSButton { sidebarView.previewWallpaperButton }
     private var liveCheckbox: NSButton { sidebarView.liveCheckbox }
@@ -62,6 +63,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let deleteVirtualItem = NSMenuItem(title: "Delete Virtual Display", action: #selector(deleteVirtualDisplay), keyEquivalent: "")
         deleteVirtualItem.target = self
         layoutMenu.addItem(deleteVirtualItem)
+        let refreshItem = NSMenuItem(title: "Refresh Displays", action: #selector(refreshDisplays), keyEquivalent: "r")
+        refreshItem.target = self
+        layoutMenu.addItem(refreshItem)
         layoutMenu.addItem(.separator())
         let savePresetItem = NSMenuItem(title: "Save Layout as Preset…", action: #selector(savePreset), keyEquivalent: "")
         savePresetItem.target = self
@@ -189,18 +193,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let fitButton = NSButton(title: "Zoom to Fit", target: mainView, action: #selector(DisplayArrangementView.zoomToFitFromButton))
         centerButton.bezelStyle = .rounded
         fitButton.bezelStyle = .rounded
-        let addVirtualButton = NSButton(title: "Add Virtual Display…", target: self, action: #selector(addVirtualDisplay))
-        addVirtualButton.bezelStyle = .rounded
-        let buttonStack = NSStackView(views: [centerButton, fitButton, addVirtualButton])
+        let buttonStack = NSStackView(views: [centerButton, fitButton])
         buttonStack.orientation = .horizontal
         buttonStack.spacing = 8
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
 
-        let refreshButton = NSButton(title: "Refresh Displays", target: self, action: #selector(refreshDisplays))
         let settingsButton = NSButton(title: "Display Settings…", target: self, action: #selector(openDisplaySettings))
-        refreshButton.bezelStyle = .rounded
         settingsButton.bezelStyle = .rounded
-        let systemButtonStack = NSStackView(views: [refreshButton, settingsButton])
+        let systemButtonStack = NSStackView(views: [settingsButton])
         systemButtonStack.orientation = .horizontal
         systemButtonStack.spacing = 8
         systemButtonStack.translatesAutoresizingMaskIntoConstraints = false
@@ -223,8 +223,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self.mainView = mainView
         sidebar.exportImagesButton.target = self
         sidebar.exportImagesButton.action = #selector(exportWallpaperImages)
-        sidebar.displaysPanel.onSelect = { [weak mainView] id, extend in mainView?.selectDisplay(id, extending: extend) }
-        sidebar.displaysPanel.update(mainView.displaySummaries(), selected: mainView.selectedDisplayIDs)
+        // The displays list, with refresh and add-virtual buttons, in its own sidebar on the left.
+        let left = LeftSidebarView()
+        leftSidebar = left
+        left.translatesAutoresizingMaskIntoConstraints = false
+        left.displaysPanel.onSelect = { [weak mainView] id, extend in mainView?.selectDisplay(id, extending: extend) }
+        left.displaysPanel.update(mainView.displaySummaries(), selected: mainView.selectedDisplayIDs)
+        left.refreshButton.target = self; left.refreshButton.action = #selector(refreshDisplays)
+        left.addVirtualButton.target = self; left.addVirtualButton.action = #selector(addVirtualDisplay)
         sidebar.exportTemplateButton.target = self
         sidebar.exportTemplateButton.action = #selector(exportTemplate)
         sidebar.applyWallpaperButton.target = self
@@ -234,18 +240,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         container.translatesAutoresizingMaskIntoConstraints = false
         mainView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(mainView)
+        container.addSubview(left)
         container.addSubview(sidebar)
         container.addSubview(buttonStack)
         container.addSubview(systemButtonStack)
 
-        // The rulers run down the left edge, so the buttons sit clear of them.
-        let buttonLeading = buttonStack.leadingAnchor.constraint(equalTo: container.leadingAnchor)
+        // The rulers run down the workspace's left edge, so the buttons sit clear of them.
+        let buttonLeading = buttonStack.leadingAnchor.constraint(equalTo: mainView.leadingAnchor)
         func positionButtons() { buttonLeading.constant = GuideSettings.showRulers ? 32 : 12 }
         positionButtons()
         NotificationCenter.default.addObserver(forName: GuideSettings.didChange, object: nil, queue: .main) { _ in positionButtons() }
         NSLayoutConstraint.activate([
             buttonLeading,
-            mainView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            left.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            left.topAnchor.constraint(equalTo: container.topAnchor),
+            left.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            mainView.leadingAnchor.constraint(equalTo: left.trailingAnchor),
             mainView.trailingAnchor.constraint(equalTo: sidebar.leadingAnchor),
             mainView.topAnchor.constraint(equalTo: container.topAnchor),
             mainView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
@@ -262,7 +272,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.title = "ScreenBean"
         window.delegate = self
         window.contentView = container
-        window.minSize = NSSize(width: 600, height: 400)
+        window.minSize = NSSize(width: 900, height: 400)
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -457,7 +467,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Pushes the current displays and selection to the overlays on the real screens.
     private func refreshOverlays() {
         guard let mainView else { return }
-        sidebarView?.displaysPanel.update(mainView.displaySummaries(), selected: mainView.selectedDisplayIDs)
+        leftSidebar?.displaysPanel.update(mainView.displaySummaries(), selected: mainView.selectedDisplayIDs)
         overlays.update(
             displays: mainView.displays,
             selectedIDs: mainView.selectedDisplayIDs,

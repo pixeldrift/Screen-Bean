@@ -12,7 +12,6 @@ final class SidebarView: NSView {
     let inspector = DisplayInspectorView()
     let referenceImagePanel = ImageLayerPanel(title: "Layout Reference Image", showsTransform: true)
     let wallpaperPanel = ImageLayerPanel(title: "Spanned Wallpaper", showsTransform: true, showsClipToggle: true)
-    let displaysPanel = DisplaysPanel()
     let settingsPanel = SettingsPanel()
     let previewWallpaperButton = NSButton(title: "Preview Wallpaper", target: nil, action: nil)
     let liveCheckbox = NSButton(checkboxWithTitle: "Live", target: nil, action: nil)
@@ -51,11 +50,10 @@ final class SidebarView: NSView {
         let buttons = NSStackView(views: [previewRow, exportRow, exportTemplateButton])
         buttons.orientation = .vertical; buttons.alignment = .leading; buttons.spacing = 8
 
-        let displaysDivider = NSBox(); displaysDivider.boxType = .separator
-        let stack = NSStackView(views: [displaysPanel, displaysDivider, settingsPanel, topDivider, referenceImagePanel, divider, wallpaperPanel, buttons])
+        let stack = NSStackView(views: [settingsPanel, topDivider, referenceImagePanel, divider, wallpaperPanel, buttons])
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 14
         stack.translatesAutoresizingMaskIntoConstraints = false
-        for v in [displaysPanel, displaysDivider, settingsPanel, topDivider, referenceImagePanel, divider, wallpaperPanel] { v.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        for v in [settingsPanel, topDivider, referenceImagePanel, divider, wallpaperPanel] { v.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
 
         // The tools are taller than a short window, so they scroll.
         let document = FlippedView()
