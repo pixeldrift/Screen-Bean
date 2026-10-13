@@ -210,3 +210,68 @@ struct MouseTransitTests {
         #expect(TransitDetector.autoZones(for: [left, right], isBlocked: { _, _, _ in true }).isEmpty)
     }
 }
+
+struct TransitMapperTests {
+    private func close(_ a: CGPoint, _ b: CGPoint) -> Bool { abs(a.x - b.x) < 1e-6 && abs(a.y - b.y) < 1e-6 }
+
+    /// Two equal screens side by side, A's right edge linked to C's left edge top to top.
+    private func sideBySide(cHeight: CGFloat = 500, cInches: CGSize = CGSize(width: 20, height: 10)) -> TransitMapper {
+        TransitMapper(
+            screens: [
+                TransitMapper.Screen(key: "A", bounds: CGRect(x: 0, y: 0, width: 1000, height: 500), size: CGSize(width: 20, height: 10)),
+                TransitMapper.Screen(key: "C", bounds: CGRect(x: 1100, y: 0, width: 1000, height: cHeight), size: cInches)
+            ],
+            zones: [TransitZone(id: "h", a: TransitSide(displayKey: "A", u0: 1, u1: 2), b: TransitSide(displayKey: "C", u0: 4, u1: 3))]
+        )
+    }
+
+    @Test func crossingKeepsTheHeightOnEqualScreens() throws {
+        let landing = try #require(sideBySide().crossing(from: CGPoint(x: 990, y: 100), to: CGPoint(x: 1010, y: 100)))
+        #expect(close(landing, CGPoint(x: 1111, y: 100)))   // 11 points past the edge, carried onto C
+    }
+
+    @Test func crossingStretchesToAShorterScreen() throws {
+        // C is half as tall, so the middle of A's edge lands on the middle of C's.
+        let mapper = sideBySide(cHeight: 250, cInches: CGSize(width: 20, height: 5))
+        let landing = try #require(mapper.crossing(from: CGPoint(x: 990, y: 249.5), to: CGPoint(x: 1010, y: 249.5)))
+        #expect(close(landing, CGPoint(x: 1111, y: 124.5)))
+    }
+
+    @Test func crossingBackReturnsToTheFirstScreen() throws {
+        let landing = try #require(sideBySide().crossing(from: CGPoint(x: 1110, y: 100), to: CGPoint(x: 1090, y: 100)))
+        #expect(landing.x < 999 && landing.x > 980)
+        #expect(abs(landing.y - 100) < 1e-6)
+    }
+
+    @Test func movesThatStayPutOrMissTheZoneAreLeftAlone() {
+        let mapper = sideBySide()
+        #expect(mapper.crossing(from: CGPoint(x: 500, y: 100), to: CGPoint(x: 520, y: 100)) == nil)
+        // Leaving through the top, where there is no zone.
+        #expect(mapper.crossing(from: CGPoint(x: 500, y: 2), to: CGPoint(x: 500, y: -10)) == nil)
+        var partial = sideBySide()
+        partial.zones = [TransitZone(id: "h", a: TransitSide(displayKey: "A", u0: 1, u1: 1.5), b: TransitSide(displayKey: "C", u0: 4, u1: 3.5))]
+        // Leaving through the lower half of the edge, which this zone doesn't cover.
+        #expect(partial.crossing(from: CGPoint(x: 990, y: 400), to: CGPoint(x: 1010, y: 400)) == nil)
+        #expect(partial.crossing(from: CGPoint(x: 990, y: 100), to: CGPoint(x: 1010, y: 100)) != nil)
+    }
+
+    @Test func crossingUpIntoAScreenAbove() throws {
+        let mapper = TransitMapper(
+            screens: [
+                TransitMapper.Screen(key: "A", bounds: CGRect(x: 0, y: 0, width: 1000, height: 500), size: CGSize(width: 20, height: 10)),
+                TransitMapper.Screen(key: "B", bounds: CGRect(x: 0, y: -600, width: 1000, height: 500), size: CGSize(width: 20, height: 10))
+            ],
+            zones: [TransitZone(id: "v", a: TransitSide(displayKey: "B", u0: 3, u1: 2), b: TransitSide(displayKey: "A", u0: 0, u1: 1))]
+        )
+        let landing = try #require(mapper.crossing(from: CGPoint(x: 499.5, y: 5), to: CGPoint(x: 499.5, y: -10)))
+        #expect(close(landing, CGPoint(x: 499.5, y: -111)))
+    }
+
+    @Test func distanceAndPositionAreInverses() {
+        let size = CGSize(width: 20, height: 10)
+        for u in [0.0, 0.25, 1.0, 1.7, 2.5, 3.9, 4.0, 5.2] {
+            let d = TransitMapper.distance(at: u, size: size)
+            #expect(abs(TransitMapper.position(atDistance: d, size: size) - u) < 1e-9)
+        }
+    }
+}

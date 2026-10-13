@@ -7,6 +7,7 @@
 import Cocoa
 import CoreGraphics
 import UniformTypeIdentifiers
+import ServiceManagement
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow!
@@ -15,6 +16,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var sidebarView: SidebarView!
     private var leftSidebar: LeftSidebarView!
     private var alignEditor: AlignToDisplayController?
+    private var statusItem: NSStatusItem?
+    private var mappingRefreshWork: DispatchWorkItem?
+    private var mappingAccessTimer: Timer?
+    private static let migratedKey = "ScreenBean.MigratedFromSandbox"
     private var identifyButton: NSButton { sidebarView.settingsPanel.identifyButton }
     private var previewButton: NSButton { sidebarView.previewWallpaperButton }
     private var liveCheckbox: NSButton { sidebarView.liveCheckbox }
@@ -27,6 +32,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private static let excludePrimaryKey = "ScreenBean.ExcludePrimaryFromIdentify"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        migrateFromSandboxIfNeeded()
         let mainMenu = NSMenu()
         let appMenuItem = NSMenuItem()
         mainMenu.addItem(appMenuItem)
@@ -269,11 +275,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.delegate = self
         // The window is built by hand and has nothing to restore.
         window.isRestorable = false
+        // Closing the window leaves the app running, so mouse mapping keeps working from the menu bar.
+        window.isReleasedWhenClosed = false
         window.contentView = container
         window.minSize = NSSize(width: 900, height: 400)
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        setUpStatusItem()
+        sidebar.settingsPanel.onMappingToggled = { [weak self] on in self?.setMouseMapping(on) }
+        applyMouseMapping()
         // A display connected while the app was closed may be one a virtual display was planned for.
         DispatchQueue.main.async { [weak self] in self?.offerVirtualLinks {} }
     }
@@ -412,6 +423,111 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    // MARK: - Mouse Mapping
+
+    /// Before the sandbox was dropped, settings and images lived in the app's own container. Copies them over once.
+    private func migrateFromSandboxIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: Self.migratedKey), let id = Bundle.main.bundleIdentifier else { return }
+        defaults.set(true, forKey: Self.migratedKey)
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let container = home.appendingPathComponent("Library/Containers/\(id)/Data/Library", isDirectory: true)
+        let plist = container.appendingPathComponent("Preferences/\(id).plist")
+        if let old = NSDictionary(contentsOf: plist) as? [String: Any] {
+            for (key, value) in old where key.hasPrefix("ScreenBean.") && defaults.object(forKey: key) == nil { defaults.set(value, forKey: key) }
+        }
+        let source = container.appendingPathComponent("Application Support/ScreenBean", isDirectory: true)
+        let destination = home.appendingPathComponent("Library/Application Support/ScreenBean", isDirectory: true)
+        if FileManager.default.fileExists(atPath: source.path), !FileManager.default.fileExists(atPath: destination.path) {
+            try? FileManager.default.copyItem(at: source, to: destination)
+        }
+    }
+
+    /// The menu bar icon, which stays while the window is closed.
+    private func setUpStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.button?.image = NSImage(systemSymbolName: "display.2", accessibilityDescription: "ScreenBean")
+        let menu = NSMenu()
+        let show = NSMenuItem(title: "Show ScreenBean", action: #selector(showMainWindow), keyEquivalent: "")
+        let mapping = NSMenuItem(title: "Mouse Mapping", action: #selector(toggleMouseMappingFromMenu), keyEquivalent: "")
+        let login = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        let quit = NSMenuItem(title: "Quit ScreenBean", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        for entry in [show, mapping, login] { entry.target = self }
+        for entry in [show, mapping, login, .separator(), quit] { menu.addItem(entry) }
+        item.menu = menu
+        statusItem = item
+    }
+
+    @objc private func showMainWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func toggleMouseMappingFromMenu() { setMouseMapping(!MouseMappingSettings.isEnabled) }
+
+    @objc private func toggleLaunchAtLogin() {
+        let service = SMAppService.mainApp
+        do {
+            if service.status == .enabled { try service.unregister() } else { try service.register() }
+        } catch {
+            showAlert("Could not change Launch at Login", error.localizedDescription, style: .warning)
+        }
+    }
+
+    private func setMouseMapping(_ on: Bool) {
+        MouseMappingSettings.isEnabled = on
+        if on, !MouseTransitEngine.hasAccess { MouseTransitEngine.requestAccess() }
+        applyMouseMapping()
+    }
+
+    /// Brings the engine in line with the setting and the current layout.
+    private func applyMouseMapping() {
+        let engine = MouseTransitEngine.shared
+        guard MouseMappingSettings.isEnabled, let mainView else {
+            engine.stop()
+            mappingAccessTimer?.invalidate()
+            mappingAccessTimer = nil
+            showMappingStatus()
+            return
+        }
+        engine.update(mainView.transitMapper())
+        if !engine.isRunning, !engine.start() { waitForAccessibilityAccess() }
+        showMappingStatus()
+    }
+
+    /// Checks every moment until the user has allowed Accessibility, then starts.
+    private func waitForAccessibilityAccess() {
+        guard mappingAccessTimer == nil else { return }
+        mappingAccessTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] timer in
+            guard MouseTransitEngine.hasAccess else { return }
+            timer.invalidate()
+            self?.mappingAccessTimer = nil
+            self?.applyMouseMapping()
+        }
+    }
+
+    /// Refreshes the tables shortly after edits stop arriving, since drags change them constantly.
+    private func scheduleMouseMappingRefresh() {
+        guard MouseMappingSettings.isEnabled else { return }
+        mappingRefreshWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.applyMouseMapping() }
+        mappingRefreshWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work)
+    }
+
+    private func showMappingStatus() {
+        let enabled = MouseMappingSettings.isEnabled
+        let note: String
+        if !enabled {
+            note = "Lets the mouse cross between displays by the transit zones. It keeps working from the menu bar when this window is closed."
+        } else if MouseTransitEngine.shared.isRunning {
+            note = "On. The mouse follows the zones while ScreenBean is running."
+        } else {
+            note = "Waiting for permission. Allow ScreenBean under Privacy & Security ▸ Accessibility in System Settings."
+        }
+        sidebarView?.settingsPanel.showMappingStatus(isOn: enabled, note: note)
+    }
+
     // MARK: - Align Reference Image
 
     /// Opens the editor that scales and places the reference image from marks made on the photo.
@@ -484,6 +600,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func refreshOverlays() {
         guard let mainView else { return }
         leftSidebar?.update(mainView.displaySummaries(), selected: mainView.selectedDisplayIDs)
+        scheduleMouseMappingRefresh()
         overlays.update(
             displays: mainView.displays,
             selectedIDs: mainView.selectedDisplayIDs,
@@ -551,7 +668,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         overlays.excludePrimary = excluded
     }
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// Clicking the Dock icon with no window open brings the window back.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { showMainWindow() }
+        return true
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        MouseTransitEngine.shared.stop()
         overlays.hideAll()
     }
 
@@ -593,6 +719,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if let active = LayoutPresetStore.shared.active { item.title = "Update \u{201C}\(active.name)\u{201D} with Current Layout" } else { item.title = "Update Active Preset" }
             return LayoutPresetStore.shared.active != nil
         }
+        if item.action == #selector(toggleMouseMappingFromMenu) { item.state = MouseMappingSettings.isEnabled ? .on : .off }
+        if item.action == #selector(toggleLaunchAtLogin) { item.state = SMAppService.mainApp.status == .enabled ? .on : .off }
         if item.action == #selector(clearGuides) { return !GuideStore.shared.guides.isEmpty }
         if item.action == #selector(toggleFractions) {
             if MeasurementFormat.unit != .inches { item.state = .off; return false }

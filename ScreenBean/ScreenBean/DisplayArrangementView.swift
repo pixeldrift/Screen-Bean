@@ -1884,14 +1884,28 @@ class DisplayArrangementView: NSView {
     private var selectedTransitID: String?
     private var transitDrag: TransitDrag?
 
-    /// Every zone: found between displays that face each other, with the user's changes applied.
+    /// The zones to draw: none unless Show Mouse Transit is on.
     func transitZones() -> [TransitZone] {
-        guard GuideSettings.showMouseTransit else { return [] }
+        GuideSettings.showMouseTransit ? allTransitZones() : []
+    }
+
+    /// Every zone: found between displays that face each other, with the user's changes applied.
+    private func allTransitZones() -> [TransitZone] {
         let panels = physicalLayout.displays.map { TransitDetector.Panel(key: $0.persistentID, rect: panelRect($0)) }
         let found = TransitDetector.autoZones(for: panels) { gap, first, second in
             physicalLayout.displays.contains { $0.persistentID != first && $0.persistentID != second && panelRect($0).intersects(gap) }
         }
         return TransitStore.shared.resolved(found)
+    }
+
+    /// What the mouse engine needs: each connected display's place on the desktop and real size, and the zones.
+    func transitMapper() -> TransitMapper {
+        var screens: [TransitMapper.Screen] = []
+        for info in displays where !info.isVirtual {
+            guard let placed = physicalLayout.displays.first(where: { $0.id == info.displayID }) else { continue }
+            screens.append(TransitMapper.Screen(key: info.persistentID, bounds: CGDisplayBounds(info.displayID), size: CGSize(width: placed.width, height: placed.height)))
+        }
+        return TransitMapper(screens: screens, zones: allTransitZones())
     }
 
     private func transitRect(_ key: String) -> CGRect? {

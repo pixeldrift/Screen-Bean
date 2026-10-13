@@ -16,6 +16,10 @@ final class SettingsPanel: NSView {
     private let fractionsCheckbox = NSButton(checkboxWithTitle: "Show units as fractions", target: nil, action: nil)
     private let rulersCheckbox = NSButton(checkboxWithTitle: "Show Rulers", target: nil, action: nil)
     private let transitCheckbox = NSButton(checkboxWithTitle: "Show Mouse Transit", target: nil, action: nil)
+    private let mappingCheckbox = NSButton(checkboxWithTitle: "Enable Mouse Mapping", target: nil, action: nil)
+    private let mappingNote = NSTextField(wrappingLabelWithString: "")
+    /// Called when Enable Mouse Mapping is switched.
+    var onMappingToggled: ((Bool) -> Void)?
     private let bezelControl = NSSegmentedControl(labels: ["All", "Per display", "None"], trackingMode: .selectOne, target: nil, action: nil)
     private let edgeGuidesCheckbox = NSButton(checkboxWithTitle: "Edge guides", target: nil, action: nil)
     private let edgeScopeControl = NSSegmentedControl(labels: ["All", "Selected"], trackingMode: .selectOne, target: nil, action: nil)
@@ -64,6 +68,13 @@ final class SettingsPanel: NSView {
         transitCheckbox.target = self; transitCheckbox.action = #selector(transitToggled)
         transitCheckbox.toolTip = "Show where the mouse can pass from one display to the next. Select a zone to move its corner dots along the display edges."
 
+        mappingCheckbox.target = self; mappingCheckbox.action = #selector(mappingToggled)
+        mappingCheckbox.toolTip = "Make the real mouse cross between displays by the transit zones. Needs Accessibility permission."
+        mappingNote.font = .systemFont(ofSize: 10)
+        mappingNote.textColor = .tertiaryLabelColor
+        mappingNote.preferredMaxLayoutWidth = 220
+        let mapping = vertical([mappingCheckbox, mappingNote], spacing: 2)
+
         // Bezels: a global override over each display's own Show bezel setting.
         let bezelLabel = NSTextField(labelWithString: "Show Display Bezels")
         bezelLabel.font = .systemFont(ofSize: 12)
@@ -102,7 +113,7 @@ final class SettingsPanel: NSView {
         syncGuideControls()
 
         let guidesDivider = NSBox(); guidesDivider.boxType = .separator
-        let stack = vertical([title, identify, units, fractions, rulersCheckbox, transitCheckbox, bezels, guidesDivider, guides], spacing: 12)
+        let stack = vertical([title, identify, units, fractions, rulersCheckbox, transitCheckbox, mapping, bezels, guidesDivider, guides], spacing: 12)
         guidesDivider.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
@@ -142,6 +153,13 @@ final class SettingsPanel: NSView {
 
     @objc private func unitChanged() { MeasurementFormat.unit = unitControl.selectedSegment == 1 ? .centimeters : .inches }
     @objc private func fractionsToggled() { MeasurementFormat.useFractions = fractionsCheckbox.state == .on }
+    /// Shows whether mouse mapping is on and what it is waiting for, without notifying `onMappingToggled`.
+    func showMappingStatus(isOn: Bool, note: String) {
+        mappingCheckbox.state = isOn ? .on : .off
+        mappingNote.stringValue = note
+    }
+
+    @objc private func mappingToggled() { onMappingToggled?(mappingCheckbox.state == .on) }
     @objc private func transitToggled() { GuideSettings.showMouseTransit = transitCheckbox.state == .on }
     @objc private func rulersToggled() { GuideSettings.showRulers = rulersCheckbox.state == .on }
     @objc private func bezelChanged() { BezelVisibility.current = bezelChoices[min(max(bezelControl.selectedSegment, 0), bezelChoices.count - 1)] }
