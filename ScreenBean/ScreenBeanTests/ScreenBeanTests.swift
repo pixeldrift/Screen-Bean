@@ -243,16 +243,31 @@ struct TransitMapperTests {
         #expect(abs(landing.y - 100) < 1e-6)
     }
 
-    @Test func movesThatStayPutOrMissTheZoneAreLeftAlone() {
+    @Test func movesThatStayOnADisplayAreLeftAlone() {
+        #expect(sideBySide().crossing(from: CGPoint(x: 500, y: 100), to: CGPoint(x: 520, y: 100)) == nil)
+    }
+
+    /// Leaving where no zone covers holds the pointer at the edge, sliding along it.
+    @Test func leavingOutsideAZoneStopsAtTheEdge() throws {
         let mapper = sideBySide()
-        #expect(mapper.crossing(from: CGPoint(x: 500, y: 100), to: CGPoint(x: 520, y: 100)) == nil)
-        // Leaving through the top, where there is no zone.
-        #expect(mapper.crossing(from: CGPoint(x: 500, y: 2), to: CGPoint(x: 500, y: -10)) == nil)
+        // Out through the top, where there is no zone.
+        let top = try #require(mapper.crossing(from: CGPoint(x: 500, y: 2), to: CGPoint(x: 520, y: -10)))
+        #expect(close(top, CGPoint(x: 520, y: 0)))
         var partial = sideBySide()
         partial.zones = [TransitZone(id: "h", a: TransitSide(displayKey: "A", u0: 1, u1: 1.5), b: TransitSide(displayKey: "C", u0: 4, u1: 3.5))]
-        // Leaving through the lower half of the edge, which this zone doesn't cover.
-        #expect(partial.crossing(from: CGPoint(x: 990, y: 400), to: CGPoint(x: 1010, y: 400)) == nil)
-        #expect(partial.crossing(from: CGPoint(x: 990, y: 100), to: CGPoint(x: 1010, y: 100)) != nil)
+        // Through the lower half of the right edge, which this zone doesn't cover: held at the edge.
+        let held = try #require(partial.crossing(from: CGPoint(x: 990, y: 400), to: CGPoint(x: 1010, y: 410)))
+        #expect(close(held, CGPoint(x: 999, y: 410)))
+        // Through the upper half it crosses.
+        let crossed = try #require(partial.crossing(from: CGPoint(x: 990, y: 100), to: CGPoint(x: 1010, y: 100)))
+        #expect(crossed.x > 1100)
+    }
+
+    /// With no zones there is nothing to enforce, so moves are never held.
+    @Test func noZonesMeansNoBlocking() {
+        var mapper = sideBySide()
+        mapper.zones = []
+        #expect(mapper.crossing(from: CGPoint(x: 990, y: 100), to: CGPoint(x: 1010, y: 100)) == nil)
     }
 
     @Test func crossingUpIntoAScreenAbove() throws {

@@ -25,11 +25,15 @@ struct TransitMapper {
 
     var screens: [Screen] = []
     var zones: [TransitZone] = []
+    /// When on, a move that leaves a display anywhere no zone covers stops at the edge instead of following macOS's own
+    /// arrangement. With no zones at all there is nothing to enforce, so moves are left alone.
+    var blocksOutsideZones = true
 
     // MARK: - Crossing
 
     /// Where the pointer should go for a move from `from` to `to`, or nil to leave the move alone (it stays on one
-    /// display, or leaves through a place no zone covers).
+    /// display). A move that leaves through a zone lands on the other display; one that leaves anywhere else is held at
+    /// the edge.
     func crossing(from: CGPoint, to: CGPoint) -> CGPoint? {
         guard let source = screens.first(where: { Self.contains(Self.limit($0), from) }) else { return nil }
         let box = Self.limit(source)
@@ -53,7 +57,9 @@ struct TransitMapper {
                 return Self.landing(at: arrival, in: Self.limit(target), overshoot: exit.overshoot)
             }
         }
-        return nil
+        // Not through any zone: the pointer can't cross here, so it stays on this display, sliding along the edge.
+        guard blocksOutsideZones, !zones.isEmpty else { return nil }
+        return CGPoint(x: min(max(to.x, box.minX), box.maxX), y: min(max(to.y, box.minY), box.maxY))
     }
 
     // MARK: - Geometry

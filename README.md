@@ -543,7 +543,7 @@ Organized by topic. Checked items are built.
 ### Mouse Mapping
 
 * [x]	Show Mouse Transit: zones found automatically between facing displays (the whole of the two edges linked, corner to corner), drawn as translucent shapes with each edge colored for the display it connects to. Select a zone to move its end dots along a display's outline (they snap to corners and can go around a corner) or slide a whole side with its middle dot. Edits are remembered; Delete removes a zone
-* [x]	Mouse mapping engine (first version): an event tap makes the pointer cross by the transit zones, matching the crossing point proportionally along the other edge; outside any zone macOS's own behavior applies. Runs inside the app, which keeps going from a menu bar icon when the window is closed (with Launch at Login). Needs Accessibility permission and no app sandbox
+* [x]	Mouse mapping engine (first version): an event tap makes the pointer cross by the transit zones, matching the crossing point proportionally along the other edge; outside any zone the pointer is held at the edge (with no zones at all, nothing is blocked). Runs inside the app, which keeps going from a menu bar icon when the window is closed (with Launch at Login). Needs Accessibility permission and no app sandbox
 * [ ]	Test and tune mouse mapping on real hardware (hot corners, fast flicks, drags, corners)
 * [ ]	Move the engine into a separate login-item helper so it runs without the app
 * [ ]	Edge-segment mapping
