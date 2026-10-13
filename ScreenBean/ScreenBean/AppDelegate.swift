@@ -618,7 +618,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
             displays: mainView.displays,
             selectedIDs: mainView.selectedDisplayIDs,
             guides: mainView.resolvedGuides(),
-            panels: mainView.displayPanelRects()
+            panels: mainView.displayPanelRects(),
+            transit: mainView.screenTransitMarks()
         )
     }
 

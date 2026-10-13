@@ -128,6 +128,15 @@ struct TransitZone: Codable, Equatable {
     var isRemoved = false
 }
 
+/// One stretch of a real screen's edge that a zone covers, for drawing on that screen: where it is on the outline, the
+/// color of the display it connects to, and that display's letter.
+struct ScreenTransitMark {
+    let u0: Double
+    let u1: Double
+    let color: NSColor
+    let partnerLabel: String
+}
+
 // MARK: - Finding zones
 
 enum TransitDetector {

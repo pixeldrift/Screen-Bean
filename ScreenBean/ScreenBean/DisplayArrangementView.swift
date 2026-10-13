@@ -1898,6 +1898,24 @@ class DisplayArrangementView: NSView {
         return TransitStore.shared.resolved(found)
     }
 
+    /// For each display, the stretches of its edge that zones cover, for drawing on the real screens. Empty unless
+    /// Show Transit on Screens is on.
+    func screenTransitMarks() -> [CGDirectDisplayID: [ScreenTransitMark]] {
+        guard GuideSettings.showTransitOnScreens else { return [:] }
+        var marks: [CGDirectDisplayID: [ScreenTransitMark]] = [:]
+        for zone in allTransitZones() {
+            for (mine, theirs) in [(zone.a, zone.b), (zone.b, zone.a)] {
+                guard let index = physicalLayout.displays.firstIndex(where: { $0.persistentID == mine.displayKey }),
+                      let partnerIndex = physicalLayout.displays.firstIndex(where: { $0.persistentID == theirs.displayKey }) else { continue }
+                let partner = physicalLayout.displays[partnerIndex]
+                marks[physicalLayout.displays[index].id, default: []].append(
+                    ScreenTransitMark(u0: mine.u0, u1: mine.u1, color: NSColor(displayHex: partner.colorHex), partnerLabel: DisplayIdentity.label(forIndex: partnerIndex))
+                )
+            }
+        }
+        return marks
+    }
+
     /// What the mouse engine needs: each connected display's place on the desktop and real size, and the zones.
     func transitMapper() -> TransitMapper {
         var screens: [TransitMapper.Screen] = []

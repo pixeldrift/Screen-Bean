@@ -544,6 +544,7 @@ Organized by topic. Checked items are built.
 
 * [x]	Show Mouse Transit: zones found automatically between facing displays (the whole of the two edges linked, corner to corner), drawn as translucent shapes with each edge colored for the display it connects to. Select a zone to move its end dots along a display's outline (they snap to corners, can go around a corner, and make the line to their partner level when it is nearly level; hold Control to turn snapping off) or slide a whole side with its middle dot. Edits are remembered; Delete removes a zone
 * [x]	Mouse mapping engine (first version): an event tap makes the pointer cross by the transit zones, matching the crossing point proportionally along the other edge; outside any zone the pointer is held at the edge (with no zones at all, nothing is blocked). Runs inside the app, which keeps going from a menu bar icon when the window is closed (with Launch at Login). Needs Accessibility permission and no app sandbox
+* [x]	Show Transit on Screens: each zone's stretch of edge drawn on the real screens in the color of the display it leads to, with that display's letter
 * [ ]	Test and tune mouse mapping on real hardware (hot corners, fast flicks, drags, corners)
 * [ ]	Move the engine into a separate login-item helper so it runs without the app
 * [ ]	Edge-segment mapping

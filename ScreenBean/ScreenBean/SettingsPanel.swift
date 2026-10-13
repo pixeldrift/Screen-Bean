@@ -16,6 +16,7 @@ final class SettingsPanel: NSView {
     private let fractionsCheckbox = NSButton(checkboxWithTitle: "Show units as fractions", target: nil, action: nil)
     private let rulersCheckbox = NSButton(checkboxWithTitle: "Show Rulers", target: nil, action: nil)
     private let transitCheckbox = NSButton(checkboxWithTitle: "Show Mouse Transit", target: nil, action: nil)
+    private let transitScreensCheckbox = NSButton(checkboxWithTitle: "Show Transit on Screens", target: nil, action: nil)
     private let mappingCheckbox = NSButton(checkboxWithTitle: "Enable Mouse Mapping", target: nil, action: nil)
     private let mappingNote = NSTextField(wrappingLabelWithString: "")
     /// Called when Enable Mouse Mapping is switched.
@@ -68,6 +69,8 @@ final class SettingsPanel: NSView {
         transitCheckbox.target = self; transitCheckbox.action = #selector(transitToggled)
         transitCheckbox.toolTip = "Show where the mouse can pass from one display to the next. Select a zone to move its corner dots along the display edges."
 
+        transitScreensCheckbox.target = self; transitScreensCheckbox.action = #selector(transitScreensToggled)
+        transitScreensCheckbox.toolTip = "Draw each zone's stretch of edge on the real screens, in the color of the display it leads to, with that display's letter."
         mappingCheckbox.target = self; mappingCheckbox.action = #selector(mappingToggled)
         mappingCheckbox.toolTip = "Make the real mouse cross between displays by the transit zones. Needs Accessibility permission."
         mappingNote.font = .systemFont(ofSize: 10)
@@ -113,7 +116,7 @@ final class SettingsPanel: NSView {
         syncGuideControls()
 
         let guidesDivider = NSBox(); guidesDivider.boxType = .separator
-        let stack = vertical([title, identify, units, fractions, rulersCheckbox, transitCheckbox, mapping, bezels, guidesDivider, guides], spacing: 12)
+        let stack = vertical([title, identify, units, fractions, rulersCheckbox, transitCheckbox, transitScreensCheckbox, mapping, bezels, guidesDivider, guides], spacing: 12)
         guidesDivider.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
@@ -142,6 +145,7 @@ final class SettingsPanel: NSView {
     private func syncGuideControls() {
         rulersCheckbox.state = GuideSettings.showRulers ? .on : .off
         transitCheckbox.state = GuideSettings.showMouseTransit ? .on : .off
+        transitScreensCheckbox.state = GuideSettings.showTransitOnScreens ? .on : .off
         edgeGuidesCheckbox.state = GuideSettings.showEdgeGuides ? .on : .off
         edgeScopeControl.selectedSegment = GuideSettings.edgeScope.rawValue
         edgeScopeControl.isEnabled = GuideSettings.showEdgeGuides
@@ -159,6 +163,7 @@ final class SettingsPanel: NSView {
         mappingNote.stringValue = note
     }
 
+    @objc private func transitScreensToggled() { GuideSettings.showTransitOnScreens = transitScreensCheckbox.state == .on }
     @objc private func mappingToggled() { onMappingToggled?(mappingCheckbox.state == .on) }
     @objc private func transitToggled() { GuideSettings.showMouseTransit = transitCheckbox.state == .on }
     @objc private func rulersToggled() { GuideSettings.showRulers = rulersCheckbox.state == .on }

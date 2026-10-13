@@ -37,6 +37,7 @@ final class DisplayOverlayManager {
     private var identities: [DisplayIdentity] = []
     private var guides: [ResolvedGuide] = []
     private var panels: [CGDirectDisplayID: CGRect] = [:]
+    private var transit: [CGDirectDisplayID: [ScreenTransitMark]] = [:]
     private var selectedIDs: Set<CGDirectDisplayID> = []
     private var windows: [CGDirectDisplayID: NSWindow] = [:]
     private var globalMonitor: Any?
@@ -52,11 +53,12 @@ final class DisplayOverlayManager {
     /// Call whenever the displays, their appearance or the selection change.
     /// `guides` are in physical inches and `panels` give each display's place on that canvas,
     /// which is how a guide is mapped onto every real screen it crosses.
-    func update(displays: [DisplayInfo], selectedIDs: Set<CGDirectDisplayID>, guides: [ResolvedGuide], panels: [CGDirectDisplayID: CGRect]) {
+    func update(displays: [DisplayInfo], selectedIDs: Set<CGDirectDisplayID>, guides: [ResolvedGuide], panels: [CGDirectDisplayID: CGRect], transit: [CGDirectDisplayID: [ScreenTransitMark]] = [:]) {
         identities = DisplayIdentity.identities(for: displays)
         self.selectedIDs = selectedIDs
         self.guides = guides
         self.panels = panels
+        self.transit = transit
         refresh()
     }
 
@@ -97,14 +99,15 @@ final class DisplayOverlayManager {
             let showsBorder = selectedIDs.contains(identity.id)
             let preview = previewImages?[identity.id]
             let showsGuides = !guides.isEmpty && panels[identity.id] != nil
-            guard showsIdentity || showsBorder || preview != nil || showsGuides, let screen = NSScreen.screen(forDisplayID: identity.id) else { continue }
+            let marks = transit[identity.id] ?? []
+            guard showsIdentity || showsBorder || preview != nil || showsGuides || !marks.isEmpty, let screen = NSScreen.screen(forDisplayID: identity.id) else { continue }
             wanted.insert(identity.id)
             let window = windows[identity.id] ?? makeWindow()
             windows[identity.id] = window
             // A live preview sits below the app's window (which is raised above it) so the interface stays usable.
             window.level = previewIsLive && previewImages != nil ? .floating : .screenSaver
             window.setFrame(screen.frame, display: false)
-            (window.contentView as? OverlayView)?.configure(identity, showsIdentity: showsIdentity, showsBorder: showsBorder, preview: preview, guides: showsGuides ? guides : [], panel: panels[identity.id])
+            (window.contentView as? OverlayView)?.configure(identity, showsIdentity: showsIdentity, showsBorder: showsBorder, preview: preview, guides: showsGuides ? guides : [], panel: panels[identity.id], transit: marks)
             window.orderFrontRegardless()
         }
         for id in Array(windows.keys) where !wanted.contains(id) {
@@ -182,8 +185,10 @@ private final class OverlayView: NSView {
     private var preview: CGImage?
     private var guides: [ResolvedGuide] = []
     private var panel: CGRect?
+    private var transit: [ScreenTransitMark] = []
 
-    func configure(_ identity: DisplayIdentity, showsIdentity: Bool, showsBorder: Bool, preview: CGImage?, guides: [ResolvedGuide], panel: CGRect?) {
+    func configure(_ identity: DisplayIdentity, showsIdentity: Bool, showsBorder: Bool, preview: CGImage?, guides: [ResolvedGuide], panel: CGRect?, transit: [ScreenTransitMark]) {
+        self.transit = transit
         self.identity = identity
         self.guides = guides
         self.panel = panel
@@ -210,6 +215,7 @@ private final class OverlayView: NSView {
         }
         if showsIdentity { drawIdentityMarks(identity) }
         drawGuides()
+        drawTransit()
         if showsBorder { drawBorder(color) }
     }
 
@@ -235,6 +241,40 @@ private final class OverlayView: NSView {
             guide.color.setStroke()
             path.lineWidth = 2
             path.stroke()
+        }
+    }
+
+    /// The stretches of this screen's edge that a transit zone covers, each in the color of the display it leads to,
+    /// with that display's letter beside it.
+    private func drawTransit() {
+        guard !transit.isEmpty else { return }
+        let edgeBox = bounds.insetBy(dx: 6, dy: 6)
+        let labelBox = bounds.insetBy(dx: 26, dy: 26)
+        for mark in transit {
+            let path = NSBezierPath()
+            for (index, u) in Perimeter.arc(from: mark.u0, to: mark.u1).enumerated() {
+                let p = Perimeter.point(u, in: edgeBox)
+                if index == 0 { path.move(to: p) } else { path.line(to: p) }
+            }
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+            path.lineWidth = 11
+            NSColor.black.withAlphaComponent(0.45).setStroke()
+            path.stroke()
+            path.lineWidth = 8
+            mark.color.setStroke()
+            path.stroke()
+
+            let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 15, weight: .bold), .foregroundColor: NSColor.black.withAlphaComponent(0.8)]
+            let text = NSAttributedString(string: mark.partnerLabel, attributes: attributes)
+            let size = text.size()
+            let middle = Perimeter.point((mark.u0 + mark.u1) / 2, in: labelBox)
+            let pill = CGRect(x: middle.x - size.width / 2 - 7, y: middle.y - size.height / 2 - 2, width: size.width + 14, height: size.height + 4)
+            mark.color.setFill()
+            NSBezierPath(roundedRect: pill, xRadius: 6, yRadius: 6).fill()
+            NSColor.black.withAlphaComponent(0.5).setStroke()
+            NSBezierPath(roundedRect: pill, xRadius: 6, yRadius: 6).stroke()
+            text.draw(at: CGPoint(x: middle.x - size.width / 2, y: middle.y - size.height / 2))
         }
     }
 

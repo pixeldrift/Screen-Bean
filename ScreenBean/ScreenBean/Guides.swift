@@ -71,6 +71,12 @@ enum GuideSettings {
         set { set(newValue, forKey: "ScreenBean.ShowMouseTransit") }
     }
 
+    /// Draw the transit zones on the real screens too: each covered stretch of a screen's edge in the color of the display it connects to.
+    static var showTransitOnScreens: Bool {
+        get { bool("ScreenBean.ShowTransitOnScreens", default: false) }
+        set { set(newValue, forKey: "ScreenBean.ShowTransitOnScreens") }
+    }
+
     /// The guides dragged out of the rulers.
     static var showCustomGuides: Bool {
         get { bool("ScreenBean.ShowCustomGuides", default: true) }
