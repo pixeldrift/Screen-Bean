@@ -2030,24 +2030,54 @@ class DisplayArrangementView: NSView {
         return hypot(a.x - b.x, a.y - b.y) < 12 ? corner : u
     }
 
-    private func dragTransit(to point: CGPoint) {
+    /// If the line from this dot to the matching dot on the other display is nearly level, the position that makes it level.
+    private func levelled(_ u: Double, in rect: CGRect, counterpart: CGPoint) -> Double? {
+        let here = Perimeter.point(u, in: rect)
+        guard abs(here.y - counterpart.y) * pointsPerInch < 8 else { return nil }
+        return Perimeter.levelPosition(u, in: rect, with: counterpart)
+    }
+
+    /// Moves a dot, or a whole side, to follow the pointer. Dots snap to corners, and a dot that would leave the line to
+    /// its partner nearly level makes it level; holding Control (`snaps` false) turns both off.
+    private func dragTransit(to point: CGPoint, snaps: Bool) {
         guard let drag = transitDrag, var zone = transitZones().first(where: { $0.id == drag.zoneID }) else { return }
         var side = drag.side == 0 ? zone.a : zone.b
+        let other = drag.side == 0 ? zone.b : zone.a
         guard let rect = transitRect(side.displayKey) else { return }
+        // The partner dots, which the lines run to.
+        let otherRect = transitRect(other.displayKey)
+        let partnerStart = otherRect.map { Perimeter.point(other.u0, in: $0) }
+        let partnerEnd = otherRect.map { Perimeter.point(other.u1, in: $0) }
         let u = Perimeter.parameter(for: viewToPhysical(point), in: rect)
         switch drag.kind {
         case .start, .end:
             // Follow the pointer around the outline without jumping across the 0 / 4 corner.
             let previous = drag.kind == .start ? side.u0 : side.u1
-            let target = snappedToCorner(previous + Perimeter.delta(from: previous, to: u), in: rect)
+            var target = previous + Perimeter.delta(from: previous, to: u)
+            if snaps {
+                let corner = snappedToCorner(target, in: rect)
+                if corner != target {
+                    target = corner
+                } else if let partner = drag.kind == .start ? partnerStart : partnerEnd, let level = levelled(target, in: rect, counterpart: partner) {
+                    target = level
+                }
+            }
             if drag.kind == .start { side.u0 = target } else { side.u1 = target }
         case .middle:
             var shift = Perimeter.delta(from: drag.startMouseU, to: u)
-            // Whichever end comes near a corner lands on it, and the stretch stays the same length.
-            for end in [drag.startU0, drag.startU1] {
-                let moved = end + shift
-                let snapped = snappedToCorner(moved, in: rect)
-                if snapped != moved { shift = snapped - end; break }
+            if snaps {
+                // Whichever end comes near a corner lands on it; failing that, an end that would make its line level does.
+                var snapped = false
+                for end in [drag.startU0, drag.startU1] {
+                    let moved = end + shift
+                    let corner = snappedToCorner(moved, in: rect)
+                    if corner != moved { shift = corner - end; snapped = true; break }
+                }
+                if !snapped {
+                    for (end, partner) in [(drag.startU0, partnerStart), (drag.startU1, partnerEnd)] {
+                        if let partner, let level = levelled(end + shift, in: rect, counterpart: partner) { shift = level - end; break }
+                    }
+                }
             }
             side.u0 = drag.startU0 + shift
             side.u1 = drag.startU1 + shift
@@ -2573,7 +2603,7 @@ class DisplayArrangementView: NSView {
         }
 
         if transitDrag != nil {
-            dragTransit(to: currentPoint)
+            dragTransit(to: currentPoint, snaps: !event.modifierFlags.contains(.control))
             return
         }
 

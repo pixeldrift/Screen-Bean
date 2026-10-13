@@ -61,6 +61,24 @@ enum Perimeter {
         return bestU >= 4 ? 0 : bestU
     }
 
+    /// The position on the same side of the outline as `u` (a left or right edge, where height changes along it) that is
+    /// level with `target`, or nil if the dot is on a top or bottom edge or the level spot is off the edge.
+    static func levelPosition(_ u: Double, in rect: CGRect, with target: CGPoint) -> Double? {
+        let height = Double(rect.height)
+        guard height > 0 else { return nil }
+        let start = u.rounded(.down)
+        switch edge(u) {
+        case 1:
+            let f = Double(rect.maxY - target.y) / height
+            return f >= 0 && f <= 1 ? start + f : nil
+        case 3:
+            let f = Double(target.y - rect.minY) / height
+            return f >= 0 && f <= 1 ? start + f : nil
+        default:
+            return nil
+        }
+    }
+
     /// The shortest signed way from `a` to `b` around the loop, in -2...2.
     static func delta(from a: Double, to b: Double) -> Double {
         var d = (b - a).truncatingRemainder(dividingBy: 4)

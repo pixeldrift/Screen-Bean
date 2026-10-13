@@ -30,8 +30,16 @@ final class MouseTransitEngine {
     private var runLoop: CFRunLoop?
     /// Where the pointer was after the last event. Only the tap's thread reads or writes it.
     private var lastLocation: CGPoint?
+    private var eventsSeen = 0
+    private var crossingsHandled = 0
 
     private init() {}
+
+    /// How many pointer events the tap has seen and how many it redirected, for checking that it is working.
+    var counts: (events: Int, crossings: Int) {
+        lock.lock(); defer { lock.unlock() }
+        return (eventsSeen, crossingsHandled)
+    }
 
     var isRunning: Bool {
         lock.lock(); defer { lock.unlock() }
@@ -119,12 +127,21 @@ final class MouseTransitEngine {
         defer { lastLocation = event.location }
         guard let previous = lastLocation else { return passThrough }
 
-        let proposed = CGPoint(
-            x: previous.x + event.getDoubleValueField(.mouseEventDeltaX),
-            y: previous.y + event.getDoubleValueField(.mouseEventDeltaY)
-        )
-        lock.lock(); let table = mapper; lock.unlock()
+        // How far the pointer moved. The event's own fields are the best source; if they are empty, use the change in location.
+        var dx = Double(event.getIntegerValueField(.mouseEventDeltaX)), dy = Double(event.getIntegerValueField(.mouseEventDeltaY))
+        if let moved = NSEvent(cgEvent: event), moved.deltaX != 0 || moved.deltaY != 0 {
+            dx = Double(moved.deltaX); dy = Double(moved.deltaY)
+        }
+        if dx == 0 && dy == 0 {
+            dx = Double(event.location.x - previous.x); dy = Double(event.location.y - previous.y)
+        }
+        let proposed = CGPoint(x: previous.x + dx, y: previous.y + dy)
+        lock.lock()
+        let table = mapper
+        eventsSeen += 1
+        lock.unlock()
         if let landing = table.crossing(from: previous, to: proposed) {
+            lock.lock(); crossingsHandled += 1; lock.unlock()
             event.location = landing
             CGWarpMouseCursorPosition(landing)
         }

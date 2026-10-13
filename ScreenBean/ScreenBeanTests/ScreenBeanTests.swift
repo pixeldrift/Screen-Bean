@@ -173,6 +173,18 @@ struct MouseTransitTests {
         #expect(Perimeter.arc(from: 3.5, to: 4.5) == [3.5, 4, 4.5])
     }
 
+    @Test func levelPositionSlidesAlongSideEdges() {
+        // On the right edge (x = 18), a dot at 1.2 is at y = 23.2; level with y = 22 is halfway down.
+        #expect(abs((Perimeter.levelPosition(1.2, in: rect, with: CGPoint(x: 0, y: 22)) ?? -1) - 1.5) < 1e-9)
+        // On the left edge, 3.5 is at y = 22; level with y = 23 is three quarters of the way up.
+        #expect(abs((Perimeter.levelPosition(3.5, in: rect, with: CGPoint(x: 0, y: 23)) ?? -1) - 3.75) < 1e-9)
+        // Past the unwrapped corner the same edge still works: 5.2 is the right edge again.
+        #expect(abs((Perimeter.levelPosition(5.2, in: rect, with: CGPoint(x: 0, y: 22)) ?? -1) - 5.5) < 1e-9)
+        // Top and bottom edges are already at one height, and a level spot beyond the edge doesn't exist.
+        #expect(Perimeter.levelPosition(0.5, in: rect, with: CGPoint(x: 0, y: 22)) == nil)
+        #expect(Perimeter.levelPosition(1.2, in: rect, with: CGPoint(x: 0, y: 30)) == nil)
+    }
+
     @Test func deltaTakesTheShortWayRound() {
         #expect(abs(Perimeter.delta(from: 3.9, to: 0.1) - 0.2) < 1e-9)
         #expect(abs(Perimeter.delta(from: 0.1, to: 3.9) + 0.2) < 1e-9)

@@ -9,7 +9,7 @@ import CoreGraphics
 import UniformTypeIdentifiers
 import ServiceManagement
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
     var window: NSWindow!
     private var mainView: DisplayArrangementView?
     private let overlays = DisplayOverlayManager()
@@ -39,7 +39,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let appMenu = NSMenu()
         appMenu.addItem(NSMenuItem(title: "Quit ScreenBean", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         appMenuItem.submenu = appMenu
-        for name in [GuideSettings.didChange, GuideStore.didChange] {
+        for name in [GuideSettings.didChange, GuideStore.didChange, TransitStore.didChange] {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in self?.refreshOverlays() }
         }
         // Edit: undo and redo for layout changes, plus the usual text editing commands.
@@ -454,8 +454,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let quit = NSMenuItem(title: "Quit ScreenBean", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         for entry in [show, mapping, login] { entry.target = self }
         for entry in [show, mapping, login, .separator(), quit] { menu.addItem(entry) }
+        menu.delegate = self
         item.menu = menu
         statusItem = item
+    }
+
+    /// The menu bar menu shows whether the mouse engine is seeing events and redirecting them.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === statusItem?.menu, let item = menu.items.first(where: { $0.action == #selector(toggleMouseMappingFromMenu) }) else { return }
+        let engine = MouseTransitEngine.shared
+        if MouseMappingSettings.isEnabled, engine.isRunning {
+            let counts = engine.counts
+            item.title = "Mouse Mapping (\(counts.crossings) crossings, \(counts.events) moves seen)"
+        } else {
+            item.title = "Mouse Mapping"
+        }
     }
 
     @objc private func showMainWindow() {
