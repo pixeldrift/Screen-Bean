@@ -75,8 +75,6 @@ final class MouseTransitEngine {
         lock.lock()
         tap = newTap
         lock.unlock()
-        // After a warp macOS ignores the mouse for a moment by default, which would make a crossing stutter.
-        _ = CGSetLocalEventsSuppressionInterval(0)
 
         let thread = Thread { [weak self] in
             guard let self else { return }
