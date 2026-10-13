@@ -39,20 +39,26 @@ enum Perimeter {
     /// The position on the outline nearest to `p`, from 0 to just under 4.
     static func parameter(for p: CGPoint, in rect: CGRect) -> Double {
         let width = max(rect.width, 0.0001), height = max(rect.height, 0.0001)
-        func clamp(_ v: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat { min(max(v, low), high) }
-        // Where the nearest point of each edge is, as a fraction along that edge.
-        let candidates: [(edge: Int, fraction: CGFloat, distance: CGFloat)] = [
-            (0, clamp((p.x - rect.minX) / width, 0, 1), 0),
-            (1, clamp((rect.maxY - p.y) / height, 0, 1), 0),
-            (2, clamp((rect.maxX - p.x) / width, 0, 1), 0),
-            (3, clamp((p.y - rect.minY) / height, 0, 1), 0)
-        ].map { candidate in
-            let nearest = point(Double(candidate.edge) + Double(candidate.fraction), in: rect)
-            return (candidate.edge, candidate.fraction, hypot(nearest.x - p.x, nearest.y - p.y))
+        // Where along each edge the nearest point is, as a fraction of that edge.
+        let fractions: [CGFloat] = [
+            (p.x - rect.minX) / width,
+            (rect.maxY - p.y) / height,
+            (rect.maxX - p.x) / width,
+            (p.y - rect.minY) / height
+        ]
+        var bestU = 0.0
+        var bestDistance = CGFloat.greatestFiniteMagnitude
+        for edge in 0..<4 {
+            let fraction = min(max(fractions[edge], 0), 1)
+            let u = Double(edge) + Double(fraction)
+            let nearest = point(u, in: rect)
+            let distance = hypot(nearest.x - p.x, nearest.y - p.y)
+            if distance < bestDistance {
+                bestDistance = distance
+                bestU = u
+            }
         }
-        let best = candidates.min { $0.distance < $1.distance }!
-        let u = Double(best.edge) + Double(best.fraction)
-        return u >= 4 ? 0 : u
+        return bestU >= 4 ? 0 : bestU
     }
 
     /// The shortest signed way from `a` to `b` around the loop, in -2...2.
